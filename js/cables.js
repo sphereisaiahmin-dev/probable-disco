@@ -1,1 +1,0 @@
-/home/deploy/cables/cables_ui/dist/js/cables.js

@@ -1,1 +1,0 @@
-/home/deploy/cables/cables_api/public/js/libs_core/cgl_copytexture.js
