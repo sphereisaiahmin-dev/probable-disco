@@ -3,27 +3,24 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>saintjustus.xyz</title>
-    <meta name="description" content="The portfolio of saintjustus — technology, art, and music.">
+    <title>work — saintjustus.xyz</title>
+    <meta name="description" content="Technology and research projects by saintjustus.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/site.css">
-    <meta itemprop="name" content="saintjustus.xyz">
-    <meta itemprop="description" content="made with cables">
-    <meta itemprop="image" content="screenshot.png">
 </head>
 <body>
     <canvas id="glcanvas" width="100vw" height="100vh" tabindex="1"></canvas>
 
-    <main class="landing" aria-label="Primary navigation">
-        <h1 class="site-title">saintjustus.xyz</h1>
-        <nav class="nav-links" aria-label="Portfolio sections">
-            <a class="nav-link" href="work.html">work.</a>
-            <a class="nav-link" href="art.html">art.</a>
-            <a class="nav-link" href="music.html">music.</a>
-        </nav>
-    </main>
+    <div class="page-wrapper">
+        <section class="page-content" aria-labelledby="work-heading">
+            <h1 id="work-heading">work.</h1>
+            <p>Engineering studies, prototypes, and live tools built for the saintjustus ecosystem will live here. Each project will document the technology stack, concept sketches, and links to active deployments.</p>
+            <p>The upcoming modular system will introduce components for data-driven installations, three.js scenes, and realtime web audio experiments.</p>
+            <p><a href="index.html">return home</a></p>
+        </section>
+    </div>
 
     <script type="text/javascript" src="js/patch.js" async></script>
     <script type="text/javascript">
@@ -31,13 +28,9 @@
             CABLES.logErrorConsole("[" + initiator + "]", ...args);
         }
 
-        function patchInitialized(patch) {
-            // The patch is available to interact with once initialised.
-        }
+        function patchInitialized(patch) {}
 
-        function patchFinishedLoading(patch) {
-            // The patch is ready now, all assets have been loaded.
-        }
+        function patchFinishedLoading(patch) {}
 
         document.addEventListener("CABLES.jsLoaded", function (event) {
             CABLES.patch = new CABLES.Patch({
