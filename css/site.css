@@ -1,0 +1,142 @@
+:root {
+    --background-color: #000;
+    --text-color: #fff;
+    --accent-color: rgba(255, 255, 255, 0.25);
+    --font-family: 'Share Tech Mono', monospace;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    font-family: var(--font-family);
+    background: var(--background-color);
+    color: var(--text-color);
+}
+
+body {
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+canvas {
+    display: block;
+    position: absolute;
+    inset: 0;
+    outline: 0;
+}
+
+.landing {
+    position: relative;
+    z-index: 1;
+    width: min(800px, 90vw);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    text-transform: lowercase;
+    letter-spacing: 0.1em;
+    pointer-events: none;
+}
+
+.site-title {
+    font-size: clamp(1.25rem, 2vw + 1rem, 2.25rem);
+    font-weight: 400;
+    text-align: center;
+    margin: 0;
+}
+
+.nav-links {
+    display: flex;
+    width: 100%;
+    border: 1px solid var(--accent-color);
+    backdrop-filter: blur(6px);
+}
+
+.nav-link {
+    flex: 1;
+    padding: clamp(1.5rem, 4vw, 3rem) 0;
+    text-decoration: none;
+    color: inherit;
+    text-align: center;
+    font-size: clamp(1.5rem, 5vw, 3rem);
+    border-right: 1px solid var(--accent-color);
+    transition: color 0.3s ease, background 0.3s ease;
+    pointer-events: auto;
+}
+
+.nav-link:last-child {
+    border-right: none;
+}
+
+.nav-link:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: -4px;
+}
+
+.nav-link:hover,
+.nav-link:focus {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.page-wrapper {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: clamp(2rem, 5vw, 4rem);
+}
+
+.page-content {
+    max-width: 720px;
+    width: 100%;
+    border: 1px solid var(--accent-color);
+    padding: clamp(2rem, 6vw, 4rem);
+    backdrop-filter: blur(8px);
+    display: grid;
+    gap: 1.5rem;
+    text-transform: lowercase;
+}
+
+.page-content h1 {
+    font-size: clamp(2rem, 6vw, 3rem);
+    margin: 0;
+    font-weight: 400;
+}
+
+.page-content p {
+    margin: 0;
+    line-height: 1.7;
+    font-size: clamp(1rem, 2vw, 1.25rem);
+    letter-spacing: 0.04em;
+}
+
+.page-content a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+@media (max-width: 640px) {
+    .nav-links {
+        flex-direction: column;
+    }
+
+    .nav-link {
+        border-right: none;
+        border-bottom: 1px solid var(--accent-color);
+    }
+
+    .nav-link:last-child {
+        border-bottom: none;
+    }
+}
