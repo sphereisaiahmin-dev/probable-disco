@@ -5,7 +5,7 @@ const request = require('supertest');
 
 const app = require('../server');
 
-const CDN_HOST = 'https://stjaudio.b-cdn.net/audio/';
+const CDN_HOST = 'https://stjaudio.b-cdn.net/';
 
 async function fetchTracks() {
     const response = await request(app).get('/api/tracks');
@@ -33,14 +33,14 @@ async function curlHead(url) {
 
 test('GET /api/tracks returns CDN-backed metadata', async () => {
     const tracks = await fetchTracks();
-    assert.ok(tracks.length > 0, 'expected at least one track');
+    assert.equal(tracks.length, 6, 'expected six configured tracks');
 
     const first = tracks[0];
     assert.match(first.id, /^stj\s/);
-    assert.equal(first.title, '21questions 149bpm BEAT @thx4cmn (L+T+J)');
+    assert.equal(first.title, '50yards BEAT @THX4CMN (T+L)');
     assert.equal(first.artist, 'saintjustus');
-    assert.ok(first.src.startsWith('/media/'), 'expected proxied media path');
-    assert.ok(first.cdnSrc.startsWith(CDN_HOST));
+    assert.ok(first.src.startsWith(CDN_HOST), 'expected absolute CDN source');
+    assert.equal(first.src, first.cdnSrc, 'expected direct CDN playback URL');
 });
 
 test('CDN audio asset responds to HEAD requests', { timeout: 15000 }, async () => {

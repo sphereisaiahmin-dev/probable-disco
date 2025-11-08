@@ -1,6 +1,3 @@
-const fs = require('node:fs');
-const path = require('node:path');
-
 const serverConfig = (() => {
     try {
         // eslint-disable-next-line import/no-dynamic-require, global-require
@@ -10,148 +7,81 @@ const serverConfig = (() => {
     }
 })();
 
-const DEFAULT_CDN_BASE_URL = 'https://stjaudio.b-cdn.net/audio';
-const CDN_AUDIO_BASE_URL = String(
-    process.env.CDN_AUDIO_BASE_URL || serverConfig.cdnAudioBaseUrl || DEFAULT_CDN_BASE_URL
-).replace(/\/+$/, '');
-
-const TRACK_MANIFEST_PATH = process.env.TRACK_MANIFEST_PATH || path.join(__dirname, 'tracks.json');
-const LOCAL_AUDIO_DIRECTORY = process.env.LOCAL_AUDIO_DIRECTORY || path.join(__dirname, '..', 'audio');
+const DEFAULT_CDN_BASE_URL = 'https://stjaudio.b-cdn.net';
 const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|flac|ogg|aac|m4a|opus|webm)$/i;
+
+const DEFAULT_TRACK_URLS = [
+    'https://stjaudio.b-cdn.net/50yards_BEAT%20%40THX4CMN%20(T%2BL).mp3',
+    'https://stjaudio.b-cdn.net/8mile%20138bpm_BEAT%20%40thx4cmn%20(L%2BT).mp3',
+    'https://stjaudio.b-cdn.net/swv4cmn%2063bpm_BEAT%20%40thx4cmn%20(L%2BTV).mp3',
+    'https://stjaudio.b-cdn.net/thecombo_BEAT%20104bpm%20(U%2BL).mp3',
+    'https://stjaudio.b-cdn.net/toasty%20155bpm_BEAT%20%40thx4cmn%20(L%2BT%2BU).mp3',
+    'https://stjaudio.b-cdn.net/uthought%2092bpm_BEAT%20%40thx4cmn%20(L%2BU).mp3'
+];
 
 let trackCache = [];
 
-function normaliseFilename(filename) {
-    if (typeof filename !== 'string') {
-        return '';
+function resolveConfiguredTrackUrls() {
+    if (Array.isArray(serverConfig.cdnTrackUrls) && serverConfig.cdnTrackUrls.length > 0) {
+        return serverConfig.cdnTrackUrls;
     }
 
-    const replaced = filename.replace(/\\+/g, '/').trim();
-    if (!replaced) {
-        return '';
-    }
-
-    const normalised = path.posix.normalize(replaced);
-    if (!normalised || normalised === '.' || normalised === '..') {
-        return '';
-    }
-
-    if (normalised.startsWith('../')) {
-        return '';
-    }
-
-    return normalised.replace(/^\.\//, '');
+    return DEFAULT_TRACK_URLS;
 }
 
-function isAudioFile(filename) {
-    if (!filename) {
-        return false;
-    }
-
-    const baseName = path.posix.basename(filename);
-    return AUDIO_EXTENSION_PATTERN.test(baseName);
-}
-
-function normaliseEntry(entry) {
+function normaliseTrackUrl(entry) {
     if (!entry) {
         return null;
     }
 
-    if (typeof entry === 'string') {
-        const filename = normaliseFilename(entry);
-        return isAudioFile(filename) ? { filename } : null;
+    const candidate = typeof entry === 'string' ? { url: entry } : { ...entry };
+    if (typeof candidate.url !== 'string' || !candidate.url.trim()) {
+        return null;
     }
 
-    if (typeof entry === 'object') {
-        const candidate = { ...entry };
-        if (typeof candidate.filename !== 'string') {
-            return null;
-        }
-        const filename = normaliseFilename(candidate.filename);
-        if (!isAudioFile(filename)) {
-            return null;
-        }
-        candidate.filename = filename;
-        return candidate;
-    }
-
-    return null;
-}
-
-function readManifest(manifestPath) {
+    let parsedUrl;
     try {
-        if (!fs.existsSync(manifestPath)) {
-            return [];
-        }
-
-        const raw = fs.readFileSync(manifestPath, 'utf8');
-        if (!raw.trim()) {
-            return [];
-        }
-
-        const parsed = JSON.parse(raw);
-        const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed.tracks) ? parsed.tracks : [];
-        return list
-            .map(normaliseEntry)
-            .filter(Boolean)
-            .sort((a, b) => a.filename.localeCompare(b.filename, 'en'));
+        parsedUrl = new URL(candidate.url);
     } catch (error) {
-        // eslint-disable-next-line no-console
-        console.warn('track catalog: failed to read track manifest', error);
-        return [];
+        return null;
     }
-}
 
-function scanLocalDirectory(directory, relativeRoot = '') {
-    try {
-        const entries = fs.readdirSync(directory, { withFileTypes: true });
+    const normalisedUrl = parsedUrl.toString();
+    const pathname = parsedUrl.pathname.replace(/^\/+/u, '');
+    const filename = decodeURIComponent(pathname.split('/').pop() || '');
 
-        const files = [];
-        entries.forEach((entry) => {
-            const relativePath = relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name;
-
-            if (entry.isDirectory()) {
-                files.push(...scanLocalDirectory(path.join(directory, entry.name), relativePath));
-                return;
-            }
-
-            if (!entry.isFile()) {
-                return;
-            }
-
-            const normalised = normaliseEntry(relativePath);
-            if (normalised) {
-                files.push(normalised);
-            }
-        });
-
-        return files.sort((a, b) => a.filename.localeCompare(b.filename, 'en'));
-    } catch (error) {
-        // eslint-disable-next-line no-console
-        console.warn('track catalog: failed to scan local audio directory', error);
-        return [];
+    if (!filename || !AUDIO_EXTENSION_PATTERN.test(filename)) {
+        return null;
     }
+
+    return {
+        id: candidate.id,
+        title: candidate.title,
+        artist: candidate.artist,
+        url: normalisedUrl,
+        path: pathname,
+        filename
+    };
 }
 
 function refresh() {
-    const manifestTracks = readManifest(TRACK_MANIFEST_PATH);
-    if (manifestTracks.length) {
-        trackCache = manifestTracks;
-        return trackCache;
+    const sourceUrls = resolveConfiguredTrackUrls();
+    trackCache = sourceUrls
+        .map(normaliseTrackUrl)
+        .filter(Boolean)
+        .sort((a, b) => a.filename.localeCompare(b.filename, 'en'));
+
+    if (!trackCache.length) {
+        // eslint-disable-next-line no-console
+        console.warn('track catalog: no CDN tracks configured after refresh');
     }
 
-    const localTracks = scanLocalDirectory(LOCAL_AUDIO_DIRECTORY);
-    trackCache = localTracks;
-    if (!localTracks.length) {
-        // eslint-disable-next-line no-console
-        console.warn('track catalog: no tracks available after refresh');
-    }
-    return trackCache;
+    return trackCache.map((track) => ({ ...track }));
 }
 
 function initialize() {
     refresh();
-    return trackCache;
+    return getTrackCatalog();
 }
 
 function getTrackCatalog() {
@@ -159,7 +89,15 @@ function getTrackCatalog() {
 }
 
 function getAudioBaseUrl() {
-    return CDN_AUDIO_BASE_URL;
+    if (trackCache.length > 0) {
+        try {
+            return new URL(trackCache[0].url).origin;
+        } catch (error) {
+            return DEFAULT_CDN_BASE_URL;
+        }
+    }
+
+    return DEFAULT_CDN_BASE_URL;
 }
 
 module.exports = {
