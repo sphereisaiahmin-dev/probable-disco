@@ -26,6 +26,106 @@ body {
     justify-content: center;
 }
 
+.audio-player {
+    position: fixed;
+    inset: auto 0 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 0.75rem 1.5rem;
+    border-top: 1px solid var(--accent-color);
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(12px);
+    font-size: 0.875rem;
+    text-transform: lowercase;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+.audio-player__cluster {
+    display: grid;
+    gap: 0.35rem;
+    pointer-events: none;
+}
+
+.audio-player__ticker {
+    max-width: min(320px, 40vw);
+    overflow: hidden;
+    border: 1px solid var(--accent-color);
+    padding: 0.2rem 0.75rem;
+    letter-spacing: 0.08em;
+}
+
+.audio-player__ticker-text {
+    display: inline-block;
+    white-space: nowrap;
+    animation: audio-player-scroll 12s linear infinite;
+}
+
+.audio-player__meta {
+    margin: 0;
+    display: flex;
+    gap: 0.75rem;
+    letter-spacing: 0.06em;
+    opacity: 0.7;
+}
+
+.audio-player__meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.audio-player__controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    pointer-events: auto;
+}
+
+.audio-player__control {
+    appearance: none;
+    border: 1px solid var(--accent-color);
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.95rem;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: background 0.3s ease, color 0.3s ease;
+}
+
+.audio-player__control:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 2px;
+}
+
+.audio-player__control:hover,
+.audio-player__control:focus-visible {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.audio-player.is-playing .audio-player__ticker-text {
+    animation-duration: 8s;
+}
+
+@keyframes audio-player-scroll {
+    from {
+        transform: translateX(0%);
+    }
+    to {
+        transform: translateX(-100%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .audio-player__ticker-text {
+        animation: none;
+    }
+}
+
 canvas {
     display: block;
     position: absolute;
