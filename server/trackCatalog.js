@@ -118,41 +118,99 @@ function parseCatalogBody(body) {
     return parseHtmlListing(body);
 }
 
-function requestDirectoryListing() {
-    const targetUrl = new URL(`${CDN_AUDIO_BASE_URL.replace(/\/?$/, '/')}`);
-
+function httpRequest(options) {
     return new Promise((resolve, reject) => {
-        const request = https.request(
-            {
-                protocol: targetUrl.protocol,
-                hostname: targetUrl.hostname,
-                port: targetUrl.port || 443,
-                method: 'GET',
-                path: `${targetUrl.pathname}${targetUrl.search}` || '/',
-                headers: {
-                    accept: 'application/json, text/html;q=0.9, */*;q=0.8',
-                    ...(CDN_TOKEN ? { token: CDN_TOKEN } : {})
-                }
-            },
-            (response) => {
-                const { statusCode = 500 } = response;
-                if (statusCode < 200 || statusCode >= 300) {
-                    response.resume();
-                    reject(new Error(`unexpected status code ${statusCode}`));
-                    return;
-                }
-
-                const chunks = [];
-                response.on('data', (chunk) => chunks.push(chunk));
-                response.on('end', () => {
-                    resolve(Buffer.concat(chunks).toString('utf8'));
-                });
+        const request = https.request(options, (response) => {
+            const { statusCode = 500 } = response;
+            if (statusCode < 200 || statusCode >= 300) {
+                response.resume();
+                const error = new Error(`unexpected status code ${statusCode}`);
+                error.statusCode = statusCode;
+                error.headers = response.headers;
+                reject(error);
+                return;
             }
-        );
+
+            const chunks = [];
+            response.on('data', (chunk) => chunks.push(chunk));
+            response.on('end', () => {
+                resolve(Buffer.concat(chunks).toString('utf8'));
+            });
+        });
 
         request.on('error', reject);
         request.end();
     });
+}
+
+function requestCdnDirectoryListing(targetUrl) {
+    return httpRequest({
+        protocol: targetUrl.protocol,
+        hostname: targetUrl.hostname,
+        port: targetUrl.port || 443,
+        method: 'GET',
+        path: `${targetUrl.pathname}${targetUrl.search}` || '/',
+        headers: {
+            accept: 'application/json, text/html;q=0.9, */*;q=0.8',
+            ...(CDN_TOKEN ? { token: CDN_TOKEN } : {})
+        }
+    });
+}
+
+function getBunnyStorageHost(hostname) {
+    if (!hostname.endsWith('.b-cdn.net')) {
+        return null;
+    }
+
+    const zone = hostname.split('.')[0];
+    if (!zone) {
+        return null;
+    }
+
+    return `${zone}.storage.bunnycdn.com`;
+}
+
+function requestBunnyStorageListing(targetUrl) {
+    if (!CDN_TOKEN) {
+        return Promise.reject(new Error('storage listing requires CDN token'));
+    }
+
+    const storageHost = getBunnyStorageHost(targetUrl.hostname);
+    if (!storageHost) {
+        return Promise.reject(new Error('unable to determine bunny storage host'));
+    }
+
+    const storagePath = targetUrl.pathname.replace(/^\/+/, '');
+    const normalisedPath = `/${storagePath}`.replace(/\/?$/, '/');
+
+    return httpRequest({
+        protocol: 'https:',
+        hostname: storageHost,
+        port: 443,
+        method: 'GET',
+        path: normalisedPath,
+        headers: {
+            accept: 'application/json, text/html;q=0.9, */*;q=0.8',
+            AccessKey: CDN_TOKEN
+        }
+    });
+}
+
+async function requestDirectoryListing() {
+    const targetUrl = new URL(`${CDN_AUDIO_BASE_URL.replace(/\/?$/, '/')}`);
+
+    try {
+        return await requestCdnDirectoryListing(targetUrl);
+    } catch (error) {
+        const shouldFallbackToStorage =
+            error && (error.statusCode === 403 || error.statusCode === 404);
+
+        if (!shouldFallbackToStorage) {
+            throw error;
+        }
+
+        return requestBunnyStorageListing(targetUrl);
+    }
 }
 
 async function readLocalAudioDirectory() {
