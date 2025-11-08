@@ -2,6 +2,9 @@ const path = require('node:path');
 const express = require('express');
 
 const trackCatalog = require('./server/trackCatalog');
+const serverConfig = require('./server/config.json');
+
+const DEFAULT_HOST = serverConfig.host || '127.0.0.1';
 
 const CDN_BASE_URL = 'https://stjaudio.b-cdn.net/audio';
 const DEFAULT_ARTIST = 'saintjustus';
@@ -78,8 +81,9 @@ module.exports = app;
 
 if (require.main === module) {
     const port = process.env.PORT || 3000;
-    app.listen(port, () => {
+    const host = process.env.HOST || DEFAULT_HOST;
+    app.listen(port, host, () => {
         // eslint-disable-next-line no-console
-        console.log(`saintjustus backend listening on http://localhost:${port}`);
+        console.log(`saintjustus backend listening on http://${host}:${port}`);
     });
 }
