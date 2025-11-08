@@ -151,6 +151,16 @@
         const audio = new Audio();
         audio.preload = "metadata";
         audio.crossOrigin = "anonymous";
+        audio.defaultPlaybackRate = 1;
+        if ("preservesPitch" in audio) {
+            audio.preservesPitch = false;
+        }
+        if ("mozPreservesPitch" in audio) {
+            audio.mozPreservesPitch = false;
+        }
+        if ("webkitPreservesPitch" in audio) {
+            audio.webkitPreservesPitch = false;
+        }
 
         const footer = document.createElement("footer");
         footer.className = "audio-player";
@@ -168,7 +178,6 @@
                 </div>
                 <p class="audio-player__meta">
                     <span class="audio-player__meta-id" data-role="meta-id">stj ---</span>
-                    <span class="audio-player__meta-artist" data-role="meta-artist">saintjustus</span>
                 </p>
             </div>
         `;
@@ -276,7 +285,6 @@
 
         const ticker = footer.querySelector('[data-role="ticker"]');
         const metaId = footer.querySelector('[data-role="meta-id"]');
-        const metaArtist = footer.querySelector('[data-role="meta-artist"]');
         const visualizerBars = Array.from(footer.querySelectorAll('[data-role="visualizer-bar"]'));
 
         return {
@@ -284,7 +292,6 @@
             footer,
             ticker,
             metaId,
-            metaArtist,
             prevButton,
             playButton,
             nextButton,
@@ -309,7 +316,6 @@
             footer,
             ticker,
             metaId,
-            metaArtist,
             prevButton,
             playButton,
             nextButton,
@@ -331,10 +337,28 @@
         const RATE_DEFAULT = 1;
         const FILTER_DEFAULT = 0;
 
+        function setPlaybackRate(rate) {
+            const nextRate = Number.isFinite(rate) && rate > 0 ? rate : RATE_DEFAULT;
+            audio.playbackRate = nextRate;
+            audio.defaultPlaybackRate = nextRate;
+
+            if ("preservesPitch" in audio) {
+                audio.preservesPitch = false;
+            }
+            if ("mozPreservesPitch" in audio) {
+                audio.mozPreservesPitch = false;
+            }
+            if ("webkitPreservesPitch" in audio) {
+                audio.webkitPreservesPitch = false;
+            }
+
+            return nextRate;
+        }
+
         function resetDspParameters() {
             rateSlider.value = String(RATE_DEFAULT);
-            audio.playbackRate = RATE_DEFAULT;
-            updateRateDisplay(RATE_DEFAULT);
+            const appliedRate = setPlaybackRate(RATE_DEFAULT);
+            updateRateDisplay(appliedRate);
 
             filterSlider.value = String(FILTER_DEFAULT);
             applyFilterValue(FILTER_DEFAULT);
@@ -743,8 +767,7 @@
 
             const displayTitle = getDisplayTitle(track);
             ticker.textContent = displayTitle || track.title || track.id;
-            metaId.textContent = track.id;
-            metaArtist.textContent = track.artist;
+            metaId.textContent = track.id || displayTitle || "--";
             audio.src = track.cdnSrc || track.src;
             resetSeekState();
 
@@ -866,8 +889,8 @@
                 return;
             }
 
-            audio.playbackRate = rate;
-            updateRateDisplay(rate);
+            const appliedRate = setPlaybackRate(rate);
+            updateRateDisplay(appliedRate);
         });
 
         filterSlider.addEventListener("input", (event) => {
