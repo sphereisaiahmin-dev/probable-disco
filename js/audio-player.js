@@ -248,46 +248,29 @@
         dspModule.setAttribute("role", "group");
         dspModule.setAttribute("aria-label", "audio shaping controls");
 
-        const speedControl = createDspControl("speed", "speed", {
+        const rateControl = createDspControl("rate", "rate", {
             min: "0.5",
             max: "1.5",
             step: "0.01",
             value: "1",
-            ariaLabel: "adjust playback speed"
+            ariaLabel: "adjust playback speed and pitch"
         });
 
-        const pitchControl = createDspControl("pitch", "pitch", {
-            min: "-12",
-            max: "12",
-            step: "0.5",
+        const filterControl = createDspControl("filter", "filter", {
+            min: "-1",
+            max: "1",
+            step: "0.01",
             value: "0",
-            ariaLabel: "shift pitch in semitones"
+            ariaLabel: "sweep between low pass and high pass"
         });
 
-        const lowPassControl = createDspControl("low pass", "lowpass", {
-            min: "500",
-            max: "20000",
-            step: "50",
-            value: "20000",
-            ariaLabel: "set low pass filter cutoff"
-        });
+        dspModule.append(rateControl.group, filterControl.group);
 
-        const highPassControl = createDspControl("high pass", "highpass", {
-            min: "20",
-            max: "1000",
-            step: "10",
-            value: "20",
-            ariaLabel: "set high pass filter cutoff"
-        });
+        const transport = document.createElement("div");
+        transport.className = "audio-player__transport";
+        transport.append(dspModule, controls);
 
-        dspModule.append(
-            speedControl.group,
-            pitchControl.group,
-            lowPassControl.group,
-            highPassControl.group
-        );
-
-        footer.append(timeline, dspModule, controls);
+        footer.append(timeline, transport);
 
         document.body.appendChild(footer);
 
@@ -310,10 +293,9 @@
             timeCurrent,
             timeDuration,
             dspModule,
-            speedControl,
-            pitchControl,
-            lowPassControl,
-            highPassControl
+            rateControl,
+            filterControl,
+            transport
         };
     }
 
@@ -336,20 +318,27 @@
             timeCurrent,
             timeDuration,
             dspModule,
-            speedControl,
-            pitchControl,
-            lowPassControl,
-            highPassControl
+            rateControl,
+            filterControl,
+            transport
         } = createPlayerShell();
 
-        const speedSlider = speedControl.input;
-        const speedValue = speedControl.valueDisplay;
-        const pitchSlider = pitchControl.input;
-        const pitchValue = pitchControl.valueDisplay;
-        const lowPassSlider = lowPassControl.input;
-        const lowPassValue = lowPassControl.valueDisplay;
-        const highPassSlider = highPassControl.input;
-        const highPassValue = highPassControl.valueDisplay;
+        const rateSlider = rateControl.input;
+        const rateValue = rateControl.valueDisplay;
+        const filterSlider = filterControl.input;
+        const filterValue = filterControl.valueDisplay;
+
+        const RATE_DEFAULT = 1;
+        const FILTER_DEFAULT = 0;
+
+        function resetDspParameters() {
+            rateSlider.value = String(RATE_DEFAULT);
+            audio.playbackRate = RATE_DEFAULT;
+            updateRateDisplay(RATE_DEFAULT);
+
+            filterSlider.value = String(FILTER_DEFAULT);
+            applyFilterValue(FILTER_DEFAULT);
+        }
 
         let tracks = [];
         let currentIndex = 0;
@@ -360,7 +349,6 @@
         let nativeLowPass = null;
         let nativeHighPass = null;
         let toneSource = null;
-        let tonePitchShift = null;
         let toneLowPass = null;
         let toneHighPass = null;
         let toneAnalyser = null;
@@ -439,31 +427,63 @@
             return formatFrequency(value);
         }
 
-        function updateSpeedDisplay(rate) {
-            if (!Number.isFinite(rate)) {
-                speedValue.textContent = "--";
+        function updateRateDisplay(rate) {
+            if (!Number.isFinite(rate) || rate <= 0) {
+                rateValue.textContent = "-- / -- st";
                 return;
             }
 
-            speedValue.textContent = `${rate.toFixed(2)}x`;
+            const semitones = 12 * Math.log2(rate);
+            const semitoneText = semitones >= 0 ? `+${semitones.toFixed(1)}` : semitones.toFixed(1);
+            rateValue.textContent = `${rate.toFixed(2)}x / ${semitoneText} st`;
         }
 
-        function updatePitchDisplay(semitones) {
-            if (!Number.isFinite(semitones)) {
-                pitchValue.textContent = "-- st";
+        function computeFilterFrequencies(value) {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue) || Math.abs(numericValue) < 0.01) {
+                return {
+                    mode: "open",
+                    lowPass: 20000,
+                    highPass: 20
+                };
+            }
+
+            if (numericValue < 0) {
+                const intensity = Math.min(1, Math.abs(numericValue));
+                const lowPass = 20000 - intensity * (20000 - 500);
+                return {
+                    mode: "lowpass",
+                    lowPass,
+                    highPass: 20
+                };
+            }
+
+            const intensity = Math.min(1, numericValue);
+            const highPass = 20 + intensity * (1000 - 20);
+            return {
+                mode: "highpass",
+                lowPass: 20000,
+                highPass
+            };
+        }
+
+        function updateFilterDisplay(settings) {
+            if (!settings) {
+                filterValue.textContent = "--";
                 return;
             }
 
-            const formatted = semitones > 0 ? `+${semitones.toFixed(1)}` : semitones.toFixed(1);
-            pitchValue.textContent = `${formatted} st`;
-        }
+            if (settings.mode === "open") {
+                filterValue.textContent = "open";
+                return;
+            }
 
-        function updateLowPassDisplay(value) {
-            lowPassValue.textContent = describeLowPass(value);
-        }
+            if (settings.mode === "lowpass") {
+                filterValue.textContent = `low pass ${describeLowPass(settings.lowPass)}`;
+                return;
+            }
 
-        function updateHighPassDisplay(value) {
-            highPassValue.textContent = describeHighPass(value);
+            filterValue.textContent = `high pass ${describeHighPass(settings.highPass)}`;
         }
 
         function setLowPassFrequency(value) {
@@ -480,6 +500,17 @@
             } else if (nativeHighPass) {
                 nativeHighPass.frequency.value = value;
             }
+        }
+
+        function applyFilterValue(value) {
+            const settings = computeFilterFrequencies(value);
+            if (!settings) {
+                return;
+            }
+
+            setLowPassFrequency(settings.lowPass);
+            setHighPassFrequency(settings.highPass);
+            updateFilterDisplay(settings);
         }
 
         function resetSeekState() {
@@ -538,33 +569,30 @@
                 audioContext = context && context.rawContext ? context.rawContext : context;
 
                 toneSource = new toneLibrary.MediaElementSource(audio);
-                tonePitchShift = new toneLibrary.PitchShift({ pitch: Number(pitchSlider.value) });
                 toneLowPass = new toneLibrary.Filter({
                     type: "lowpass",
-                    frequency: Number(lowPassSlider.value),
+                    frequency: 20000,
                     rolloff: -24
                 });
                 toneHighPass = new toneLibrary.Filter({
                     type: "highpass",
-                    frequency: Number(highPassSlider.value),
+                    frequency: 20,
                     rolloff: -12
                 });
                 toneAnalyser = new toneLibrary.Analyser("waveform", 256);
 
-                toneSource.connect(tonePitchShift);
-                tonePitchShift.connect(toneLowPass);
+                toneSource.connect(toneLowPass);
                 toneLowPass.connect(toneHighPass);
                 toneHighPass.connect(toneAnalyser);
                 toneHighPass.connect(toneLibrary.Destination);
+
+                applyFilterValue(filterSlider.value);
 
                 isToneGraphReady = true;
             } catch (error) {
                 console.warn("audio player: tone.js graph setup failed", error);
                 if (toneSource && typeof toneSource.dispose === "function") {
                     toneSource.dispose();
-                }
-                if (tonePitchShift && typeof tonePitchShift.dispose === "function") {
-                    tonePitchShift.dispose();
                 }
                 if (toneLowPass && typeof toneLowPass.dispose === "function") {
                     toneLowPass.dispose();
@@ -577,7 +605,6 @@
                 }
 
                 toneSource = null;
-                tonePitchShift = null;
                 toneLowPass = null;
                 toneHighPass = null;
                 toneAnalyser = null;
@@ -611,16 +638,18 @@
 
             nativeLowPass = audioContext.createBiquadFilter();
             nativeLowPass.type = "lowpass";
-            nativeLowPass.frequency.value = Number(lowPassSlider.value);
+            nativeLowPass.frequency.value = 20000;
 
             nativeHighPass = audioContext.createBiquadFilter();
             nativeHighPass.type = "highpass";
-            nativeHighPass.frequency.value = Number(highPassSlider.value);
+            nativeHighPass.frequency.value = 20;
 
             mediaSource.connect(nativeLowPass);
             nativeLowPass.connect(nativeHighPass);
             nativeHighPass.connect(analyser);
             analyser.connect(audioContext.destination);
+
+            applyFilterValue(filterSlider.value);
 
             return true;
         }
@@ -801,6 +830,7 @@
             }
 
             pendingSeekTime = null;
+            resetDspParameters();
             updateTrackDetails({ resetTime: true });
 
             if (autoplay) {
@@ -818,6 +848,7 @@
             currentIndex = history.pop();
             prevButton.disabled = history.length === 0;
             pendingSeekTime = null;
+            resetDspParameters();
             updateTrackDetails({ resetTime: true });
 
             if (autoplay) {
@@ -827,85 +858,26 @@
             }
         }
 
-        const initialSpeed = Number(speedSlider.value);
-        if (Number.isFinite(initialSpeed)) {
-            audio.playbackRate = initialSpeed;
-            updateSpeedDisplay(initialSpeed);
-        } else {
-            updateSpeedDisplay(1);
-        }
+        resetDspParameters();
 
-        updatePitchDisplay(Number(pitchSlider.value));
-        updateLowPassDisplay(Number(lowPassSlider.value));
-        updateHighPassDisplay(Number(highPassSlider.value));
-
-        speedSlider.addEventListener("input", (event) => {
+        rateSlider.addEventListener("input", (event) => {
             const rate = Number(event.target.value);
-            if (Number.isNaN(rate)) {
+            if (Number.isNaN(rate) || rate <= 0) {
                 return;
             }
 
             audio.playbackRate = rate;
-            updateSpeedDisplay(rate);
+            updateRateDisplay(rate);
         });
 
-        if (!toneLibrary) {
-            pitchSlider.disabled = true;
-            pitchSlider.title = "pitch shift requires tone.js";
-            updatePitchDisplay(0);
-        } else {
-            pitchSlider.addEventListener("input", (event) => {
-                const semitones = Number(event.target.value);
-                if (Number.isNaN(semitones)) {
-                    return;
-                }
-
-                ensureAudioContext();
-                if (tonePitchShift) {
-                    tonePitchShift.pitch = semitones;
-                }
-                updatePitchDisplay(semitones);
-            });
-        }
-
-        lowPassSlider.addEventListener("input", (event) => {
-            const rawValue = Number(event.target.value);
-            if (Number.isNaN(rawValue)) {
+        filterSlider.addEventListener("input", (event) => {
+            const value = Number(event.target.value);
+            if (Number.isNaN(value)) {
                 return;
             }
 
-            const highValue = Number(highPassSlider.value);
-            const minAllowed = highValue + 10;
-            const maxAllowed = Number(lowPassSlider.max);
-            const clamped = Math.min(Math.max(rawValue, minAllowed), maxAllowed);
-
-            if (clamped !== rawValue) {
-                event.target.value = String(clamped);
-            }
-
             ensureAudioContext();
-            setLowPassFrequency(clamped);
-            updateLowPassDisplay(clamped);
-        });
-
-        highPassSlider.addEventListener("input", (event) => {
-            const rawValue = Number(event.target.value);
-            if (Number.isNaN(rawValue)) {
-                return;
-            }
-
-            const lowValue = Number(lowPassSlider.value);
-            const minAllowed = Number(highPassSlider.min);
-            const maxAllowed = Math.max(minAllowed, lowValue - 10);
-            const clamped = Math.max(Math.min(rawValue, maxAllowed), minAllowed);
-
-            if (clamped !== rawValue) {
-                event.target.value = String(clamped);
-            }
-
-            ensureAudioContext();
-            setHighPassFrequency(clamped);
-            updateHighPassDisplay(clamped);
+            applyFilterValue(value);
         });
 
         prevButton.addEventListener("click", () => {
