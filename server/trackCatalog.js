@@ -207,7 +207,7 @@ async function requestDirectoryListing() {
         return await requestCdnDirectoryListing(targetUrl);
     } catch (error) {
         const shouldFallbackToStorage =
-            error && (error.statusCode === 403 || error.statusCode === 404);
+            error && [401, 403, 404].includes(error.statusCode);
 
         if (!shouldFallbackToStorage) {
             throw error;
