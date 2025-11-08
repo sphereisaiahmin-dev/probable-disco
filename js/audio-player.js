@@ -209,7 +209,85 @@
 
         timeline.append(timeCurrent, seekInput, timeDuration);
 
-        footer.append(timeline, controls);
+        let dspIdCounter = 0;
+
+        function createDspControl(labelText, role, { min, max, step, value, ariaLabel }) {
+            dspIdCounter += 1;
+            const group = document.createElement("div");
+            group.className = "audio-player__dsp-group";
+
+            const inputId = `dsp-${role}-${dspIdCounter}`;
+
+            const label = document.createElement("label");
+            label.className = "audio-player__dsp-label";
+            label.setAttribute("for", inputId);
+            label.textContent = labelText;
+
+            const input = document.createElement("input");
+            input.type = "range";
+            input.id = inputId;
+            input.className = "audio-player__slider";
+            input.min = min;
+            input.max = max;
+            input.step = step;
+            input.value = value;
+            input.setAttribute("aria-label", ariaLabel);
+            input.dataset.role = role;
+
+            const valueDisplay = document.createElement("span");
+            valueDisplay.className = "audio-player__dsp-value";
+            valueDisplay.dataset.role = `${role}-value`;
+
+            group.append(label, input, valueDisplay);
+
+            return { group, input, valueDisplay };
+        }
+
+        const dspModule = document.createElement("div");
+        dspModule.className = "audio-player__dsp";
+        dspModule.setAttribute("role", "group");
+        dspModule.setAttribute("aria-label", "audio shaping controls");
+
+        const speedControl = createDspControl("speed", "speed", {
+            min: "0.5",
+            max: "1.5",
+            step: "0.01",
+            value: "1",
+            ariaLabel: "adjust playback speed"
+        });
+
+        const pitchControl = createDspControl("pitch", "pitch", {
+            min: "-12",
+            max: "12",
+            step: "0.5",
+            value: "0",
+            ariaLabel: "shift pitch in semitones"
+        });
+
+        const lowPassControl = createDspControl("low pass", "lowpass", {
+            min: "500",
+            max: "20000",
+            step: "50",
+            value: "20000",
+            ariaLabel: "set low pass filter cutoff"
+        });
+
+        const highPassControl = createDspControl("high pass", "highpass", {
+            min: "20",
+            max: "1000",
+            step: "10",
+            value: "20",
+            ariaLabel: "set high pass filter cutoff"
+        });
+
+        dspModule.append(
+            speedControl.group,
+            pitchControl.group,
+            lowPassControl.group,
+            highPassControl.group
+        );
+
+        footer.append(timeline, dspModule, controls);
 
         document.body.appendChild(footer);
 
@@ -230,7 +308,12 @@
             visualizerBars,
             seekInput,
             timeCurrent,
-            timeDuration
+            timeDuration,
+            dspModule,
+            speedControl,
+            pitchControl,
+            lowPassControl,
+            highPassControl
         };
     }
 
@@ -251,8 +334,22 @@
             visualizerBars,
             seekInput,
             timeCurrent,
-            timeDuration
+            timeDuration,
+            dspModule,
+            speedControl,
+            pitchControl,
+            lowPassControl,
+            highPassControl
         } = createPlayerShell();
+
+        const speedSlider = speedControl.input;
+        const speedValue = speedControl.valueDisplay;
+        const pitchSlider = pitchControl.input;
+        const pitchValue = pitchControl.valueDisplay;
+        const lowPassSlider = lowPassControl.input;
+        const lowPassValue = lowPassControl.valueDisplay;
+        const highPassSlider = highPassControl.input;
+        const highPassValue = highPassControl.valueDisplay;
 
         let tracks = [];
         let currentIndex = 0;
@@ -260,11 +357,21 @@
         let audioContext = null;
         let analyser = null;
         let mediaSource = null;
+        let nativeLowPass = null;
+        let nativeHighPass = null;
+        let toneSource = null;
+        let tonePitchShift = null;
+        let toneLowPass = null;
+        let toneHighPass = null;
+        let toneAnalyser = null;
+        let isToneGraphReady = false;
         let dataArray = null;
         let animationFrameId = null;
+        let isVisualizerRunning = false;
         let pendingSeekTime = null;
         let resumeAfterMetadata = false;
         let isSeeking = false;
+        const toneLibrary = window.Tone || null;
 
         function formatTime(value) {
             if (!Number.isFinite(value) || value < 0) {
@@ -292,6 +399,87 @@
                 .replace(/[-_]+/g, " ")
                 .replace(/\s+/g, " ")
                 .trim();
+        }
+
+        const VISUALIZER_BASE_LEVEL = 0.08;
+
+        function formatFrequency(value) {
+            if (!Number.isFinite(value) || value <= 0) {
+                return "-- hz";
+            }
+
+            if (value >= 1000) {
+                return `${(value / 1000).toFixed(1)} khz`;
+            }
+
+            return `${Math.round(value)} hz`;
+        }
+
+        function describeLowPass(value) {
+            if (!Number.isFinite(value)) {
+                return "--";
+            }
+
+            if (value >= 19900) {
+                return "open";
+            }
+
+            return formatFrequency(value);
+        }
+
+        function describeHighPass(value) {
+            if (!Number.isFinite(value)) {
+                return "--";
+            }
+
+            if (value <= 30) {
+                return "open";
+            }
+
+            return formatFrequency(value);
+        }
+
+        function updateSpeedDisplay(rate) {
+            if (!Number.isFinite(rate)) {
+                speedValue.textContent = "--";
+                return;
+            }
+
+            speedValue.textContent = `${rate.toFixed(2)}x`;
+        }
+
+        function updatePitchDisplay(semitones) {
+            if (!Number.isFinite(semitones)) {
+                pitchValue.textContent = "-- st";
+                return;
+            }
+
+            const formatted = semitones > 0 ? `+${semitones.toFixed(1)}` : semitones.toFixed(1);
+            pitchValue.textContent = `${formatted} st`;
+        }
+
+        function updateLowPassDisplay(value) {
+            lowPassValue.textContent = describeLowPass(value);
+        }
+
+        function updateHighPassDisplay(value) {
+            highPassValue.textContent = describeHighPass(value);
+        }
+
+        function setLowPassFrequency(value) {
+            if (isToneGraphReady && toneLowPass) {
+                toneLowPass.frequency.value = value;
+            } else if (nativeLowPass) {
+                nativeLowPass.frequency.value = value;
+            }
+        }
+
+        function setHighPassFrequency(value) {
+            if (isToneGraphReady && toneHighPass) {
+                toneHighPass.frequency.value = value;
+            } else if (nativeHighPass) {
+                nativeHighPass.frequency.value = value;
+            }
         }
 
         function resetSeekState() {
@@ -336,71 +524,185 @@
             timeCurrent.textContent = formatTime(clampedTime);
         }
 
-        function ensureAudioContext() {
-            if (audioContext) {
-                return;
+        function ensureToneGraph() {
+            if (!toneLibrary) {
+                return false;
+            }
+
+            if (isToneGraphReady) {
+                return true;
+            }
+
+            try {
+                const context = typeof toneLibrary.getContext === "function" ? toneLibrary.getContext() : toneLibrary.context;
+                audioContext = context && context.rawContext ? context.rawContext : context;
+
+                toneSource = new toneLibrary.MediaElementSource(audio);
+                tonePitchShift = new toneLibrary.PitchShift({ pitch: Number(pitchSlider.value) });
+                toneLowPass = new toneLibrary.Filter({
+                    type: "lowpass",
+                    frequency: Number(lowPassSlider.value),
+                    rolloff: -24
+                });
+                toneHighPass = new toneLibrary.Filter({
+                    type: "highpass",
+                    frequency: Number(highPassSlider.value),
+                    rolloff: -12
+                });
+                toneAnalyser = new toneLibrary.Analyser("waveform", 256);
+
+                toneSource.connect(tonePitchShift);
+                tonePitchShift.connect(toneLowPass);
+                toneLowPass.connect(toneHighPass);
+                toneHighPass.connect(toneAnalyser);
+                toneHighPass.connect(toneLibrary.Destination);
+
+                isToneGraphReady = true;
+            } catch (error) {
+                console.warn("audio player: tone.js graph setup failed", error);
+                if (toneSource && typeof toneSource.dispose === "function") {
+                    toneSource.dispose();
+                }
+                if (tonePitchShift && typeof tonePitchShift.dispose === "function") {
+                    tonePitchShift.dispose();
+                }
+                if (toneLowPass && typeof toneLowPass.dispose === "function") {
+                    toneLowPass.dispose();
+                }
+                if (toneHighPass && typeof toneHighPass.dispose === "function") {
+                    toneHighPass.dispose();
+                }
+                if (toneAnalyser && typeof toneAnalyser.dispose === "function") {
+                    toneAnalyser.dispose();
+                }
+
+                toneSource = null;
+                tonePitchShift = null;
+                toneLowPass = null;
+                toneHighPass = null;
+                toneAnalyser = null;
+                isToneGraphReady = false;
+            }
+
+            return isToneGraphReady;
+        }
+
+        function ensureNativeGraph() {
+            if (analyser) {
+                return true;
             }
 
             const Context = window.AudioContext || window.webkitAudioContext;
             if (!Context) {
-                return;
+                return false;
             }
 
-            audioContext = new Context();
+            if (!audioContext) {
+                audioContext = new Context();
+            }
+
+            if (!mediaSource) {
+                mediaSource = audioContext.createMediaElementSource(audio);
+            }
+
             analyser = audioContext.createAnalyser();
             analyser.fftSize = 256;
             dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-            mediaSource = audioContext.createMediaElementSource(audio);
-            mediaSource.connect(analyser);
+            nativeLowPass = audioContext.createBiquadFilter();
+            nativeLowPass.type = "lowpass";
+            nativeLowPass.frequency.value = Number(lowPassSlider.value);
+
+            nativeHighPass = audioContext.createBiquadFilter();
+            nativeHighPass.type = "highpass";
+            nativeHighPass.frequency.value = Number(highPassSlider.value);
+
+            mediaSource.connect(nativeLowPass);
+            nativeLowPass.connect(nativeHighPass);
+            nativeHighPass.connect(analyser);
             analyser.connect(audioContext.destination);
+
+            return true;
         }
 
-        function renderVisualizer() {
-            if (!analyser || !visualizerBars.length) {
+        function ensureAudioContext() {
+            if (toneLibrary && ensureToneGraph()) {
                 return;
             }
 
-            analyser.getByteFrequencyData(dataArray);
-            const segmentLength = Math.floor(dataArray.length / visualizerBars.length) || 1;
+            ensureNativeGraph();
+        }
 
-            visualizerBars.forEach((bar, index) => {
-                const start = index * segmentLength;
-                const end = Math.min(start + segmentLength, dataArray.length);
-                let sum = 0;
-                for (let i = start; i < end; i += 1) {
-                    sum += dataArray[i];
-                }
-                const average = sum / (end - start || 1);
-                const level = Math.max(0.08, average / 255);
-                bar.style.setProperty("--level", level.toFixed(3));
-            });
+        function renderVisualizer() {
+            if (!visualizerBars.length) {
+                return;
+            }
+
+            if (isToneGraphReady && toneAnalyser) {
+                const values = toneAnalyser.getValue();
+                const segmentLength = Math.floor(values.length / visualizerBars.length) || 1;
+
+                visualizerBars.forEach((bar, index) => {
+                    const start = index * segmentLength;
+                    const end = Math.min(start + segmentLength, values.length);
+                    let sum = 0;
+                    for (let i = start; i < end; i += 1) {
+                        sum += Math.abs(values[i]);
+                    }
+                    const average = sum / (end - start || 1);
+                    const level = Math.max(VISUALIZER_BASE_LEVEL, Math.min(1, average));
+                    bar.style.setProperty("--level", level.toFixed(3));
+                });
+            } else if (analyser && dataArray instanceof Uint8Array) {
+                analyser.getByteFrequencyData(dataArray);
+                const segmentLength = Math.floor(dataArray.length / visualizerBars.length) || 1;
+
+                visualizerBars.forEach((bar, index) => {
+                    const start = index * segmentLength;
+                    const end = Math.min(start + segmentLength, dataArray.length);
+                    let sum = 0;
+                    for (let i = start; i < end; i += 1) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / (end - start || 1);
+                    const level = Math.max(VISUALIZER_BASE_LEVEL, average / 255);
+                    bar.style.setProperty("--level", level.toFixed(3));
+                });
+            }
+
+            if (!isVisualizerRunning) {
+                animationFrameId = null;
+                return;
+            }
 
             animationFrameId = requestAnimationFrame(renderVisualizer);
         }
 
         function startVisualizer() {
-            if (!audioContext || !analyser) {
+            if (isVisualizerRunning) {
                 return;
             }
 
-            if (audioContext.state === "suspended") {
+            ensureAudioContext();
+
+            if (audioContext && typeof audioContext.resume === "function" && audioContext.state === "suspended") {
                 audioContext.resume().catch(() => {});
             }
 
-            if (animationFrameId === null) {
-                animationFrameId = requestAnimationFrame(renderVisualizer);
-            }
+            isVisualizerRunning = true;
+            animationFrameId = requestAnimationFrame(renderVisualizer);
         }
 
         function stopVisualizer() {
+            isVisualizerRunning = false;
+
             if (animationFrameId !== null) {
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
             }
 
             visualizerBars.forEach((bar) => {
-                bar.style.setProperty("--level", "0.08");
+                bar.style.setProperty("--level", VISUALIZER_BASE_LEVEL.toFixed(3));
             });
         }
 
@@ -459,6 +761,15 @@
 
         function playCurrentTrack() {
             ensureAudioContext();
+
+            if (toneLibrary && typeof toneLibrary.start === "function") {
+                toneLibrary.start().catch(() => {});
+            }
+
+            if (audioContext && typeof audioContext.resume === "function" && audioContext.state === "suspended") {
+                audioContext.resume().catch(() => {});
+            }
+
             audio
                 .play()
                 .then(() => {
@@ -515,6 +826,87 @@
                 updatePlayButton();
             }
         }
+
+        const initialSpeed = Number(speedSlider.value);
+        if (Number.isFinite(initialSpeed)) {
+            audio.playbackRate = initialSpeed;
+            updateSpeedDisplay(initialSpeed);
+        } else {
+            updateSpeedDisplay(1);
+        }
+
+        updatePitchDisplay(Number(pitchSlider.value));
+        updateLowPassDisplay(Number(lowPassSlider.value));
+        updateHighPassDisplay(Number(highPassSlider.value));
+
+        speedSlider.addEventListener("input", (event) => {
+            const rate = Number(event.target.value);
+            if (Number.isNaN(rate)) {
+                return;
+            }
+
+            audio.playbackRate = rate;
+            updateSpeedDisplay(rate);
+        });
+
+        if (!toneLibrary) {
+            pitchSlider.disabled = true;
+            pitchSlider.title = "pitch shift requires tone.js";
+            updatePitchDisplay(0);
+        } else {
+            pitchSlider.addEventListener("input", (event) => {
+                const semitones = Number(event.target.value);
+                if (Number.isNaN(semitones)) {
+                    return;
+                }
+
+                ensureAudioContext();
+                if (tonePitchShift) {
+                    tonePitchShift.pitch = semitones;
+                }
+                updatePitchDisplay(semitones);
+            });
+        }
+
+        lowPassSlider.addEventListener("input", (event) => {
+            const rawValue = Number(event.target.value);
+            if (Number.isNaN(rawValue)) {
+                return;
+            }
+
+            const highValue = Number(highPassSlider.value);
+            const minAllowed = highValue + 10;
+            const maxAllowed = Number(lowPassSlider.max);
+            const clamped = Math.min(Math.max(rawValue, minAllowed), maxAllowed);
+
+            if (clamped !== rawValue) {
+                event.target.value = String(clamped);
+            }
+
+            ensureAudioContext();
+            setLowPassFrequency(clamped);
+            updateLowPassDisplay(clamped);
+        });
+
+        highPassSlider.addEventListener("input", (event) => {
+            const rawValue = Number(event.target.value);
+            if (Number.isNaN(rawValue)) {
+                return;
+            }
+
+            const lowValue = Number(lowPassSlider.value);
+            const minAllowed = Number(highPassSlider.min);
+            const maxAllowed = Math.max(minAllowed, lowValue - 10);
+            const clamped = Math.max(Math.min(rawValue, maxAllowed), minAllowed);
+
+            if (clamped !== rawValue) {
+                event.target.value = String(clamped);
+            }
+
+            ensureAudioContext();
+            setHighPassFrequency(clamped);
+            updateHighPassDisplay(clamped);
+        });
 
         prevButton.addEventListener("click", () => {
             selectPreviousTrack(true);
