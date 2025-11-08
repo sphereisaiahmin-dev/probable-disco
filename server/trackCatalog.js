@@ -157,7 +157,7 @@ function requestCdnDirectoryListing(targetUrl) {
     });
 }
 
-function getBunnyStorageHost(hostname) {
+function getBunnyStorageDetails(hostname, pathname) {
     if (!hostname.endsWith('.b-cdn.net')) {
         return null;
     }
@@ -167,7 +167,14 @@ function getBunnyStorageHost(hostname) {
         return null;
     }
 
-    return `${zone}.storage.bunnycdn.com`;
+    const storagePath = pathname.replace(/^\/+/, '');
+    const basePath = storagePath ? `/${zone}/${storagePath}` : `/${zone}`;
+    const normalisedPath = `${basePath.replace(/\/+$/, '')}/`;
+
+    return {
+        hostname: 'storage.bunnycdn.com',
+        path: normalisedPath
+    };
 }
 
 function requestBunnyStorageListing(targetUrl) {
@@ -175,20 +182,17 @@ function requestBunnyStorageListing(targetUrl) {
         return Promise.reject(new Error('storage listing requires CDN token'));
     }
 
-    const storageHost = getBunnyStorageHost(targetUrl.hostname);
-    if (!storageHost) {
+    const storageDetails = getBunnyStorageDetails(targetUrl.hostname, targetUrl.pathname);
+    if (!storageDetails) {
         return Promise.reject(new Error('unable to determine bunny storage host'));
     }
 
-    const storagePath = targetUrl.pathname.replace(/^\/+/, '');
-    const normalisedPath = `/${storagePath}`.replace(/\/?$/, '/');
-
     return httpRequest({
         protocol: 'https:',
-        hostname: storageHost,
+        hostname: storageDetails.hostname,
         port: 443,
         method: 'GET',
-        path: normalisedPath,
+        path: storageDetails.path,
         headers: {
             accept: 'application/json, text/html;q=0.9, */*;q=0.8',
             AccessKey: CDN_TOKEN
