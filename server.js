@@ -7,10 +7,12 @@ const serverConfig = require('./server/config.json');
 
 const DEFAULT_HOST = serverConfig.host || '127.0.0.1';
 
-const CDN_BASE_URL = 'https://stjaudio.b-cdn.net/audio';
+const CDN_BASE_URL = trackCatalog.getAudioBaseUrl();
 const CDN_PROXY_BASE_PATH = '/media';
 const DEFAULT_ARTIST = 'saintjustus';
 const CDN_TOKEN = process.env.CDN_TOKEN || serverConfig.cdnToken || null;
+
+trackCatalog.initialize();
 
 function normaliseTitle(filename) {
     return filename
@@ -65,6 +67,7 @@ function prepareTrack(entry, index) {
 
 function buildTrackResponse() {
     return trackCatalog
+        .getTrackCatalog()
         .map((entry, index) => prepareTrack(entry, index))
         .filter((track) => Boolean(track));
 }
