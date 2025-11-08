@@ -1,0 +1,23 @@
+{
+  "name": "probable-disco",
+  "version": "1.0.0",
+  "description": "saintjustus.xyz portfolio backend and static site",
+  "main": "server.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "saintjustus",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.4"
+  }
+}
