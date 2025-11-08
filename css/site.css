@@ -467,3 +467,200 @@ canvas {
         border-bottom: none;
     }
 }
+
+body.page-art {
+    display: block;
+    overflow: hidden;
+}
+
+.page-art #glcanvas {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+}
+
+.art-surface {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+}
+
+.art-window-layer {
+    position: relative;
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.art-window {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 180px;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    border: 1px solid var(--accent-color);
+    border-radius: 0.6rem;
+    background: rgba(8, 8, 8, 0.7);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 1.5rem 3.5rem rgba(0, 0, 0, 0.65);
+    color: var(--text-color);
+    pointer-events: auto;
+    transition: box-shadow 0.35s ease, transform 0.35s ease, border-color 0.35s ease;
+    overflow: hidden;
+}
+
+.art-window:focus-within,
+.art-window:hover {
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 2.5rem 4rem rgba(0, 0, 0, 0.75);
+}
+
+.art-window.is-active {
+    position: fixed;
+    inset: clamp(0px, 2vw, 24px);
+    width: calc(100vw - clamp(0px, 2vw, 24px) * 2);
+    height: calc(100vh - clamp(0px, 2vw, 24px) * 2);
+    border-radius: 1rem;
+    grid-template-rows: auto 1fr;
+    z-index: 9;
+    cursor: default;
+}
+
+.art-window.is-active .art-window__viewport {
+    background: rgba(0, 0, 0, 0.65);
+}
+
+.art-window.is-active .art-window__meta {
+    opacity: 1;
+}
+
+.art-window__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    letter-spacing: 0.08em;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+}
+
+.art-window.is-active .art-window__header {
+    cursor: default;
+}
+
+.art-window__title {
+    font-size: 0.95rem;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+}
+
+.art-window__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.65rem;
+    opacity: 0.7;
+    text-transform: uppercase;
+}
+
+.art-window__meta span {
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.art-window__controls {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.art-window__control {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.art-window__control:hover,
+.art-window__control:focus-visible {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.55);
+}
+
+.art-window__viewport {
+    position: relative;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+    overflow: hidden;
+}
+
+.art-window__preview {
+    width: 100%;
+    height: 100%;
+    opacity: 0.8;
+    filter: blur(12px) saturate(1.2);
+    transform: scale(1.05);
+    transition: opacity 0.4s ease;
+}
+
+.art-window.is-active .art-window__preview {
+    opacity: 0;
+}
+
+.art-window__canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.art-window__hint {
+    position: absolute;
+    inset: auto 1rem 1rem auto;
+    font-size: 0.65rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+}
+
+.art-window.is-active .art-window__hint {
+    opacity: 0;
+}
+
+.art-window__error {
+    position: absolute;
+    inset: 50% auto auto 50%;
+    transform: translate(-50%, -50%);
+    padding: 0.85rem 1.5rem;
+    border: 1px solid rgba(255, 64, 64, 0.55);
+    border-radius: 999px;
+    background: rgba(12, 0, 0, 0.65);
+    color: rgba(255, 196, 196, 0.85);
+    font-size: 0.7rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+    .art-window {
+        width: clamp(220px, 80vw, 280px);
+        height: clamp(160px, 50vh, 220px);
+    }
+}
