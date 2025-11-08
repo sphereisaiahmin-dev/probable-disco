@@ -39,13 +39,14 @@ test('GET /api/tracks returns CDN-backed metadata', async () => {
     assert.match(first.id, /^stj\s/);
     assert.equal(first.title, '21questions 149bpm BEAT @thx4cmn (L+T+J)');
     assert.equal(first.artist, 'saintjustus');
-    assert.ok(first.src.startsWith(CDN_HOST));
+    assert.ok(first.src.startsWith('/media/'), 'expected proxied media path');
+    assert.ok(first.cdnSrc.startsWith(CDN_HOST));
 });
 
 test('CDN audio asset responds to HEAD requests', { timeout: 15000 }, async () => {
     const tracks = await fetchTracks();
     assert.ok(tracks.length > 0, 'expected at least one track to validate');
 
-    const stdout = await curlHead(tracks[0].src);
+    const stdout = await curlHead(tracks[0].cdnSrc);
     assert.match(stdout, /HTTP\/1\.1\s+20[0-9]/, 'expected a successful HTTP status');
 });

@@ -150,6 +150,7 @@
     function createPlayerShell() {
         const audio = new Audio();
         audio.preload = "metadata";
+        audio.crossOrigin = "anonymous";
 
         const footer = document.createElement("footer");
         footer.className = "audio-player";
