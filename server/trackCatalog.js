@@ -22,7 +22,34 @@ const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|flac|ogg|aac|m4a|opus|webm)$/i;
 let trackCache = [];
 
 function normaliseFilename(filename) {
-    return filename.replace(/\\+/g, '/').split('/').pop().trim();
+    if (typeof filename !== 'string') {
+        return '';
+    }
+
+    const replaced = filename.replace(/\\+/g, '/').trim();
+    if (!replaced) {
+        return '';
+    }
+
+    const normalised = path.posix.normalize(replaced);
+    if (!normalised || normalised === '.' || normalised === '..') {
+        return '';
+    }
+
+    if (normalised.startsWith('../')) {
+        return '';
+    }
+
+    return normalised.replace(/^\.\//, '');
+}
+
+function isAudioFile(filename) {
+    if (!filename) {
+        return false;
+    }
+
+    const baseName = path.posix.basename(filename);
+    return AUDIO_EXTENSION_PATTERN.test(baseName);
 }
 
 function normaliseEntry(entry) {
@@ -32,7 +59,7 @@ function normaliseEntry(entry) {
 
     if (typeof entry === 'string') {
         const filename = normaliseFilename(entry);
-        return AUDIO_EXTENSION_PATTERN.test(filename) ? { filename } : null;
+        return isAudioFile(filename) ? { filename } : null;
     }
 
     if (typeof entry === 'object') {
@@ -41,7 +68,7 @@ function normaliseEntry(entry) {
             return null;
         }
         const filename = normaliseFilename(candidate.filename);
-        if (!AUDIO_EXTENSION_PATTERN.test(filename)) {
+        if (!isAudioFile(filename)) {
             return null;
         }
         candidate.filename = filename;
@@ -75,14 +102,30 @@ function readManifest(manifestPath) {
     }
 }
 
-function scanLocalDirectory(directory) {
+function scanLocalDirectory(directory, relativeRoot = '') {
     try {
         const entries = fs.readdirSync(directory, { withFileTypes: true });
-        return entries
-            .filter((entry) => entry.isFile() && AUDIO_EXTENSION_PATTERN.test(entry.name))
-            .map((entry) => normaliseEntry(entry.name))
-            .filter(Boolean)
-            .sort((a, b) => a.filename.localeCompare(b.filename, 'en'));
+
+        const files = [];
+        entries.forEach((entry) => {
+            const relativePath = relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name;
+
+            if (entry.isDirectory()) {
+                files.push(...scanLocalDirectory(path.join(directory, entry.name), relativePath));
+                return;
+            }
+
+            if (!entry.isFile()) {
+                return;
+            }
+
+            const normalised = normaliseEntry(relativePath);
+            if (normalised) {
+                files.push(normalised);
+            }
+        });
+
+        return files.sort((a, b) => a.filename.localeCompare(b.filename, 'en'));
     } catch (error) {
         // eslint-disable-next-line no-console
         console.warn('track catalog: failed to scan local audio directory', error);
