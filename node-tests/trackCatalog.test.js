@@ -1,58 +1,38 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('node:path');
-const request = require('supertest');
 
-const FIXTURE_AUDIO_DIR = path.join(__dirname, 'fixtures', 'audio-library');
-async function withFixtureCatalog(run) {
-    const originalEnv = process.env.LOCAL_AUDIO_DIRECTORY;
-    const catalogPath = require.resolve('../server/trackCatalog');
-    const serverPath = require.resolve('../server');
+const trackCatalog = require('../server/trackCatalog');
 
-    delete require.cache[catalogPath];
-    delete require.cache[serverPath];
+const EXPECTED_FILENAMES = [
+    '50yards_BEAT @THX4CMN (T+L).mp3',
+    '8mile 138bpm_BEAT @thx4cmn (L+T).mp3',
+    'swv4cmn 63bpm_BEAT @thx4cmn (L+TV).mp3',
+    'thecombo_BEAT 104bpm (U+L).mp3',
+    'toasty 155bpm_BEAT @thx4cmn (L+T+U).mp3',
+    'uthought 92bpm_BEAT @thx4cmn (L+U).mp3'
+];
 
-    process.env.LOCAL_AUDIO_DIRECTORY = FIXTURE_AUDIO_DIR;
+const CDN_ORIGIN = 'https://stjaudio.b-cdn.net';
 
-    const trackCatalog = require('../server/trackCatalog');
-    try {
-        await run({ trackCatalog });
-    } finally {
-        if (originalEnv === undefined) {
-            delete process.env.LOCAL_AUDIO_DIRECTORY;
-        } else {
-            process.env.LOCAL_AUDIO_DIRECTORY = originalEnv;
-        }
+test('track catalog exposes absolute CDN URLs with decoded filenames', () => {
+    trackCatalog.initialize();
+    const tracks = trackCatalog.getTrackCatalog();
+    assert.equal(tracks.length, EXPECTED_FILENAMES.length);
 
-        delete require.cache[catalogPath];
-        delete require.cache[serverPath];
-        const restoredCatalog = require('../server/trackCatalog');
-        restoredCatalog.initialize();
-    }
-}
+    const filenames = tracks.map((track) => track.filename);
+    assert.deepEqual(filenames, EXPECTED_FILENAMES);
 
-test('track catalog indexes nested audio directories and preserves relative paths', async () => {
-    await withFixtureCatalog(async ({ trackCatalog }) => {
-        const tracks = trackCatalog.refresh();
-        assert.equal(tracks.length, 3);
-
-        const filenames = tracks.map((track) => track.filename).sort();
-        assert.deepEqual(filenames, [
-            '21questions 149bpm_BEAT @thx4cmn (L+T+J).mp3',
-            'mixes/galactic drift.mp3',
-            'singles/sunrise-routine.wav'
-        ]);
-
-        const app = require('../server');
-        const response = await request(app).get('/api/tracks');
-        assert.equal(response.status, 200);
-        assert.ok(Array.isArray(response.body.tracks));
-        const apiTracks = response.body.tracks;
-        assert.equal(apiTracks.length, 3);
-
-        const nestedEntry = apiTracks.find((track) => track.filename === 'mixes/galactic drift.mp3');
-        assert.ok(nestedEntry, 'expected API response to include nested directory track');
-        assert.ok(nestedEntry.src.includes('/mixes/galactic%20drift.mp3'));
-        assert.ok(nestedEntry.cdnSrc.includes('/mixes/galactic%20drift.mp3'));
+    tracks.forEach((track) => {
+        assert.ok(track.url.startsWith(`${CDN_ORIGIN}/`), 'expected CDN origin in URL');
+        assert.ok(track.path, 'expected track to expose CDN path');
+        assert.equal(
+            decodeURIComponent(track.path.split('/').pop()),
+            track.filename,
+            'expected path to match decoded filename'
+        );
     });
+});
+
+test('audio base URL resolves to CDN origin', () => {
+    assert.equal(trackCatalog.getAudioBaseUrl(), CDN_ORIGIN);
 });
