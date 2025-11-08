@@ -1,7 +1,5 @@
-const https = require('node:https');
-const { URL } = require('node:url');
+const fs = require('node:fs');
 const path = require('node:path');
-const fs = require('node:fs/promises');
 
 const serverConfig = (() => {
     try {
@@ -12,314 +10,118 @@ const serverConfig = (() => {
     }
 })();
 
-const CDN_AUDIO_BASE_URL = process.env.CDN_AUDIO_BASE_URL || 'https://stjaudio.b-cdn.net/audio';
-const CDN_TOKEN = process.env.CDN_TOKEN || serverConfig.cdnToken || null;
-const REFRESH_INTERVAL_MS = 5 * 24 * 60 * 60 * 1000; // 5 days
-const AUDIO_EXTENSIONS = /\.(mp3|wav|flac|ogg|aac|m4a|opus|webm)$/i;
-const LOCAL_AUDIO_DIRECTORY = path.join(__dirname, '..', 'audio');
+const DEFAULT_CDN_BASE_URL = 'https://stjaudio.b-cdn.net/audio';
+const CDN_AUDIO_BASE_URL = String(
+    process.env.CDN_AUDIO_BASE_URL || serverConfig.cdnAudioBaseUrl || DEFAULT_CDN_BASE_URL
+).replace(/\/+$/, '');
 
-let catalog = [];
-let lastUpdated = 0;
-let refreshTimer = null;
-let refreshPromise = null;
+const TRACK_MANIFEST_PATH = process.env.TRACK_MANIFEST_PATH || path.join(__dirname, 'tracks.json');
+const LOCAL_AUDIO_DIRECTORY = process.env.LOCAL_AUDIO_DIRECTORY || path.join(__dirname, '..', 'audio');
+const AUDIO_EXTENSION_PATTERN = /\.(mp3|wav|flac|ogg|aac|m4a|opus|webm)$/i;
+
+let trackCache = [];
 
 function normaliseFilename(filename) {
-    return filename.replace(/\\+/g, '/').replace(/^\//, '').trim();
+    return filename.replace(/\\+/g, '/').split('/').pop().trim();
 }
 
-function isAudioFile(filename) {
-    return AUDIO_EXTENSIONS.test(filename);
-}
-
-function uniqueSorted(list) {
-    return Array.from(new Set(list)).sort((a, b) => a.localeCompare(b, 'en'));
-}
-
-function parseJsonListing(payload) {
-    const filenames = [];
-
-    const visit = (value) => {
-        if (!value) {
-            return;
-        }
-
-        if (Array.isArray(value)) {
-            value.forEach(visit);
-            return;
-        }
-
-        if (typeof value === 'string') {
-            const normalised = normaliseFilename(value);
-            const candidate = path.basename(normalised);
-            if (isAudioFile(candidate)) {
-                filenames.push(candidate);
-            }
-            return;
-        }
-
-        if (typeof value === 'object') {
-            const candidateKeys = ['ObjectName', 'objectName', 'Key', 'key', 'Name', 'name', 'Filename', 'filename', 'Path', 'path'];
-            candidateKeys.forEach((key) => {
-                if (value[key]) {
-                    visit(value[key]);
-                }
-            });
-        }
-    };
-
-    visit(payload);
-
-    return uniqueSorted(filenames);
-}
-
-function parseHtmlListing(payload) {
-    const filenames = [];
-    const anchorPattern = /<a[^>]+href\s*=\s*"([^"]+)"[^>]*>/gi;
-    let match = anchorPattern.exec(payload);
-
-    while (match) {
-        const href = match[1];
-        if (href) {
-            const decoded = normaliseFilename(decodeURIComponent(href));
-            const candidate = path.basename(decoded);
-            if (!decoded.endsWith('/') && isAudioFile(candidate)) {
-                filenames.push(candidate);
-            }
-        }
-        match = anchorPattern.exec(payload);
-    }
-
-    return uniqueSorted(filenames);
-}
-
-function parseCatalogBody(body) {
-    if (!body) {
-        return [];
-    }
-
-    const trimmed = body.trim();
-    if (!trimmed) {
-        return [];
-    }
-
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-        try {
-            const parsed = JSON.parse(trimmed);
-            const filenames = parseJsonListing(parsed);
-            if (filenames.length) {
-                return filenames;
-            }
-        } catch (error) {
-            // eslint-disable-next-line no-console
-            console.warn('track catalog: failed to parse JSON directory listing', error);
-        }
-    }
-
-    return parseHtmlListing(body);
-}
-
-function httpRequest(options) {
-    return new Promise((resolve, reject) => {
-        const request = https.request(options, (response) => {
-            const { statusCode = 500 } = response;
-            if (statusCode < 200 || statusCode >= 300) {
-                response.resume();
-                const error = new Error(`unexpected status code ${statusCode}`);
-                error.statusCode = statusCode;
-                error.headers = response.headers;
-                reject(error);
-                return;
-            }
-
-            const chunks = [];
-            response.on('data', (chunk) => chunks.push(chunk));
-            response.on('end', () => {
-                resolve(Buffer.concat(chunks).toString('utf8'));
-            });
-        });
-
-        request.on('error', reject);
-        request.end();
-    });
-}
-
-function requestCdnDirectoryListing(targetUrl) {
-    return httpRequest({
-        protocol: targetUrl.protocol,
-        hostname: targetUrl.hostname,
-        port: targetUrl.port || 443,
-        method: 'GET',
-        path: `${targetUrl.pathname}${targetUrl.search}` || '/',
-        headers: {
-            accept: 'application/json, text/html;q=0.9, */*;q=0.8',
-            ...(CDN_TOKEN ? { token: CDN_TOKEN } : {})
-        }
-    });
-}
-
-function getBunnyStorageDetails(hostname, pathname) {
-    if (!hostname.endsWith('.b-cdn.net')) {
+function normaliseEntry(entry) {
+    if (!entry) {
         return null;
     }
 
-    const zone = hostname.split('.')[0];
-    if (!zone) {
-        return null;
+    if (typeof entry === 'string') {
+        const filename = normaliseFilename(entry);
+        return AUDIO_EXTENSION_PATTERN.test(filename) ? { filename } : null;
     }
 
-    const storagePath = pathname.replace(/^\/+/, '');
-    const basePath = storagePath ? `/${zone}/${storagePath}` : `/${zone}`;
-    const normalisedPath = `${basePath.replace(/\/+$/, '')}/`;
-
-    return {
-        hostname: 'storage.bunnycdn.com',
-        path: normalisedPath
-    };
-}
-
-function requestBunnyStorageListing(targetUrl) {
-    if (!CDN_TOKEN) {
-        return Promise.reject(new Error('storage listing requires CDN token'));
-    }
-
-    const storageDetails = getBunnyStorageDetails(targetUrl.hostname, targetUrl.pathname);
-    if (!storageDetails) {
-        return Promise.reject(new Error('unable to determine bunny storage host'));
-    }
-
-    return httpRequest({
-        protocol: 'https:',
-        hostname: storageDetails.hostname,
-        port: 443,
-        method: 'GET',
-        path: storageDetails.path,
-        headers: {
-            accept: 'application/json, text/html;q=0.9, */*;q=0.8',
-            AccessKey: CDN_TOKEN
+    if (typeof entry === 'object') {
+        const candidate = { ...entry };
+        if (typeof candidate.filename !== 'string') {
+            return null;
         }
-    });
+        const filename = normaliseFilename(candidate.filename);
+        if (!AUDIO_EXTENSION_PATTERN.test(filename)) {
+            return null;
+        }
+        candidate.filename = filename;
+        return candidate;
+    }
+
+    return null;
 }
 
-async function requestDirectoryListing() {
-    const targetUrl = new URL(`${CDN_AUDIO_BASE_URL.replace(/\/?$/, '/')}`);
-
+function readManifest(manifestPath) {
     try {
-        return await requestCdnDirectoryListing(targetUrl);
-    } catch (error) {
-        const shouldFallbackToStorage =
-            error && [401, 403, 404].includes(error.statusCode);
-
-        if (!shouldFallbackToStorage) {
-            throw error;
+        if (!fs.existsSync(manifestPath)) {
+            return [];
         }
 
-        return requestBunnyStorageListing(targetUrl);
-    }
-}
-
-async function readLocalAudioDirectory() {
-    try {
-        const entries = await fs.readdir(LOCAL_AUDIO_DIRECTORY, { withFileTypes: true });
-        return uniqueSorted(
-            entries
-                .filter((entry) => entry.isFile() && isAudioFile(entry.name))
-                .map((entry) => entry.name)
-        );
-    } catch (error) {
-        if (error.code !== 'ENOENT') {
-            throw error;
+        const raw = fs.readFileSync(manifestPath, 'utf8');
+        if (!raw.trim()) {
+            return [];
         }
+
+        const parsed = JSON.parse(raw);
+        const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed.tracks) ? parsed.tracks : [];
+        return list
+            .map(normaliseEntry)
+            .filter(Boolean)
+            .sort((a, b) => a.filename.localeCompare(b.filename, 'en'));
+    } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn('track catalog: failed to read track manifest', error);
         return [];
     }
 }
 
-async function loadCatalogFromSources() {
+function scanLocalDirectory(directory) {
     try {
-        const body = await requestDirectoryListing();
-        const filenames = parseCatalogBody(body);
-        if (filenames.length) {
-            return filenames;
-        }
+        const entries = fs.readdirSync(directory, { withFileTypes: true });
+        return entries
+            .filter((entry) => entry.isFile() && AUDIO_EXTENSION_PATTERN.test(entry.name))
+            .map((entry) => normaliseEntry(entry.name))
+            .filter(Boolean)
+            .sort((a, b) => a.filename.localeCompare(b.filename, 'en'));
     } catch (error) {
         // eslint-disable-next-line no-console
-        console.error('track catalog: failed to load from CDN', error);
+        console.warn('track catalog: failed to scan local audio directory', error);
+        return [];
+    }
+}
+
+function refresh() {
+    const manifestTracks = readManifest(TRACK_MANIFEST_PATH);
+    if (manifestTracks.length) {
+        trackCache = manifestTracks;
+        return trackCache;
     }
 
-    try {
-        const fallback = await readLocalAudioDirectory();
-        if (fallback.length) {
-            return fallback;
-        }
-    } catch (error) {
+    const localTracks = scanLocalDirectory(LOCAL_AUDIO_DIRECTORY);
+    trackCache = localTracks;
+    if (!localTracks.length) {
         // eslint-disable-next-line no-console
-        console.error('track catalog: failed to load from local audio directory', error);
+        console.warn('track catalog: no tracks available after refresh');
     }
-
-    return [];
-}
-
-function scheduleNextRefresh(delay = REFRESH_INTERVAL_MS) {
-    if (refreshTimer) {
-        clearTimeout(refreshTimer);
-    }
-
-    refreshTimer = setTimeout(() => {
-        refreshCatalog().catch((error) => {
-            // eslint-disable-next-line no-console
-            console.error('track catalog: scheduled refresh failed', error);
-        });
-    }, delay);
-
-    if (typeof refreshTimer.unref === 'function') {
-        refreshTimer.unref();
-    }
-}
-
-async function refreshCatalog() {
-    if (refreshPromise) {
-        return refreshPromise;
-    }
-
-    refreshPromise = (async () => {
-        const filenames = await loadCatalogFromSources();
-        if (filenames.length) {
-            catalog = filenames;
-            lastUpdated = Date.now();
-        }
-        scheduleNextRefresh();
-        return catalog;
-    })()
-        .catch((error) => {
-            scheduleNextRefresh();
-            throw error;
-        })
-        .finally(() => {
-            refreshPromise = null;
-        });
-
-    return refreshPromise;
-}
-
-function getTrackCatalog() {
-    return catalog.slice();
-}
-
-function getLastUpdated() {
-    return lastUpdated;
+    return trackCache;
 }
 
 function initialize() {
-    return refreshCatalog().catch((error) => {
-        // eslint-disable-next-line no-console
-        console.error('track catalog: initial refresh failed', error);
-        return catalog;
-    });
+    refresh();
+    return trackCache;
+}
+
+function getTrackCatalog() {
+    return trackCache.map((track) => ({ ...track }));
+}
+
+function getAudioBaseUrl() {
+    return CDN_AUDIO_BASE_URL;
 }
 
 module.exports = {
     initialize,
-    refreshCatalog,
+    refresh,
     getTrackCatalog,
-    getLastUpdated,
-    getAudioBaseUrl: () => CDN_AUDIO_BASE_URL
+    getAudioBaseUrl
 };
