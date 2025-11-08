@@ -185,7 +185,31 @@
         nextButton.disabled = true;
 
         controls.append(prevButton, playButton, nextButton);
-        footer.appendChild(controls);
+
+        const timeline = document.createElement("div");
+        timeline.className = "audio-player__timeline";
+
+        const timeCurrent = document.createElement("span");
+        timeCurrent.className = "audio-player__time audio-player__time--current";
+        timeCurrent.textContent = "0:00";
+
+        const seekInput = document.createElement("input");
+        seekInput.type = "range";
+        seekInput.className = "audio-player__seek";
+        seekInput.min = "0";
+        seekInput.max = "0";
+        seekInput.step = "0.01";
+        seekInput.value = "0";
+        seekInput.disabled = true;
+        seekInput.setAttribute("aria-label", "seek through track");
+
+        const timeDuration = document.createElement("span");
+        timeDuration.className = "audio-player__time audio-player__time--duration";
+        timeDuration.textContent = "--:--";
+
+        timeline.append(timeCurrent, seekInput, timeDuration);
+
+        footer.append(timeline, controls);
 
         document.body.appendChild(footer);
 
@@ -203,14 +227,18 @@
             prevButton,
             playButton,
             nextButton,
-            visualizerBars
+            visualizerBars,
+            seekInput,
+            timeCurrent,
+            timeDuration
         };
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
         setupCanvasEventForwarding();
 
-        const savedState = restoreState();
+        const isLanding = Boolean(document.querySelector(".landing"));
+        const savedState = isLanding ? null : restoreState();
         const {
             audio,
             footer,
@@ -220,7 +248,10 @@
             prevButton,
             playButton,
             nextButton,
-            visualizerBars
+            visualizerBars,
+            seekInput,
+            timeCurrent,
+            timeDuration
         } = createPlayerShell();
 
         let tracks = [];
@@ -233,6 +264,77 @@
         let animationFrameId = null;
         let pendingSeekTime = null;
         let resumeAfterMetadata = false;
+        let isSeeking = false;
+
+        function formatTime(value) {
+            if (!Number.isFinite(value) || value < 0) {
+                return "--:--";
+            }
+
+            const totalSeconds = Math.floor(value);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${minutes}:${String(seconds).padStart(2, "0")}`;
+        }
+
+        function getDisplayTitle(track) {
+            if (!track) {
+                return "";
+            }
+
+            const source = track.filename || track.title || track.id;
+            if (!source) {
+                return "";
+            }
+
+            return source
+                .replace(/\.[^/.]+$/, "")
+                .replace(/[-_]+/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+        }
+
+        function resetSeekState() {
+            seekInput.value = "0";
+            seekInput.max = "0";
+            seekInput.disabled = true;
+            timeCurrent.textContent = formatTime(0);
+            timeDuration.textContent = "--:--";
+        }
+
+        function updateSeekFromPlayback() {
+            if (isSeeking) {
+                return;
+            }
+
+            const { currentTime, duration } = audio;
+            if (Number.isFinite(duration)) {
+                seekInput.max = String(duration);
+                seekInput.disabled = false;
+                timeDuration.textContent = formatTime(duration);
+            }
+
+            if (Number.isFinite(currentTime)) {
+                seekInput.value = String(currentTime);
+                timeCurrent.textContent = formatTime(currentTime);
+            }
+        }
+
+        function applySeek(time) {
+            if (!Number.isFinite(time)) {
+                return;
+            }
+
+            const { duration } = audio;
+            const clampedTime = Math.max(0, Number.isFinite(duration) ? Math.min(time, duration) : time);
+            pendingSeekTime = clampedTime;
+
+            if (audio.readyState >= 1) {
+                audio.currentTime = clampedTime;
+            }
+
+            timeCurrent.textContent = formatTime(clampedTime);
+        }
 
         function ensureAudioContext() {
             if (audioContext) {
@@ -308,20 +410,27 @@
                 return;
             }
 
-            ticker.textContent = track.title;
+            const displayTitle = getDisplayTitle(track);
+            ticker.textContent = displayTitle || track.title || track.id;
             metaId.textContent = track.id;
             metaArtist.textContent = track.artist;
-            audio.src = track.src;
+            audio.src = track.cdnSrc || track.src;
+            resetSeekState();
 
             if (resetTime) {
                 pendingSeekTime = null;
+            } else if (typeof pendingSeekTime === "number" && !Number.isNaN(pendingSeekTime)) {
+                seekInput.value = String(Math.max(0, pendingSeekTime));
+                timeCurrent.textContent = formatTime(pendingSeekTime);
             }
 
-            persistState({
-                trackId: track.id,
-                time: resetTime ? 0 : typeof pendingSeekTime === "number" ? pendingSeekTime : 0,
-                paused: true
-            });
+            if (!isLanding) {
+                persistState({
+                    trackId: track.id,
+                    time: resetTime ? 0 : typeof pendingSeekTime === "number" ? pendingSeekTime : 0,
+                    paused: true
+                });
+            }
         }
 
         function updatePlayButton() {
@@ -332,6 +441,10 @@
         }
 
         function queueStateSave() {
+            if (isLanding) {
+                return;
+            }
+
             const track = tracks[currentIndex];
             if (!track) {
                 return;
@@ -419,6 +532,50 @@
             }
         });
 
+        seekInput.addEventListener("pointerdown", () => {
+            isSeeking = true;
+        });
+
+        seekInput.addEventListener("pointerup", () => {
+            isSeeking = false;
+        });
+
+        seekInput.addEventListener("pointercancel", () => {
+            isSeeking = false;
+        });
+
+        seekInput.addEventListener("keydown", () => {
+            isSeeking = true;
+        });
+
+        seekInput.addEventListener("keyup", () => {
+            isSeeking = false;
+        });
+
+        seekInput.addEventListener("blur", () => {
+            isSeeking = false;
+        });
+
+        seekInput.addEventListener("input", (event) => {
+            const targetTime = Number(event.target.value);
+            if (Number.isNaN(targetTime)) {
+                return;
+            }
+
+            applySeek(targetTime);
+        });
+
+        seekInput.addEventListener("change", (event) => {
+            const targetTime = Number(event.target.value);
+            if (Number.isNaN(targetTime)) {
+                return;
+            }
+
+            applySeek(targetTime);
+            isSeeking = false;
+            queueStateSave();
+        });
+
         audio.addEventListener("play", updatePlayButton);
         audio.addEventListener("pause", updatePlayButton);
 
@@ -427,7 +584,12 @@
         });
 
         audio.addEventListener("timeupdate", () => {
+            updateSeekFromPlayback();
             queueStateSave();
+        });
+
+        audio.addEventListener("durationchange", () => {
+            updateSeekFromPlayback();
         });
 
         audio.addEventListener("loadedmetadata", () => {
@@ -442,6 +604,7 @@
                 updatePlayButton();
             }
 
+            updateSeekFromPlayback();
             queueStateSave();
             pendingSeekTime = null;
             resumeAfterMetadata = false;
