@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <title>art — saintjustus.xyz</title>
-    <meta name="description" content="Visual works, installations, and experiments by saintjustus.">
+    <meta name="description" content="Modular floating windows showcasing generative works by saintjustus.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
@@ -12,16 +12,11 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js" integrity="sha384-3946Q06UAmZay3zeE4BKiFHZUjTbO8RWJf6qxfhuK9SMP+RPHdztQL1I9vJqPgPZ" crossorigin="anonymous" defer></script>
     <script src="js/audio-player.js" defer></script>
 </head>
-<body>
+<body class="page-art">
     <canvas id="glcanvas" width="100vw" height="100vh" tabindex="1"></canvas>
 
-    <div class="page-wrapper">
-        <section class="page-content" aria-labelledby="art-heading">
-            <h1 id="art-heading">art.</h1>
-            <p>Minimalist studies, generative canvases, and installation documentation will collect here. Expect process notes, behind-the-scenes captures, and links to immersive experiences.</p>
-            <p>The design language will stay quiet to keep the focus on the work, with layered motion handled by Cables, WebGL, and future shader experiments.</p>
-            <p><a href="index.html">return home</a></p>
-        </section>
+    <div class="art-surface" aria-hidden="true">
+        <div class="art-window-layer" data-art-window-layer></div>
     </div>
 
     <script type="text/javascript" src="js/patch.js" async></script>
@@ -53,5 +48,6 @@
             e.preventDefault();
         }, false);
     </script>
+    <script type="module" src="js/art-windows.js"></script>
 </body>
 </html>
