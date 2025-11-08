@@ -415,51 +415,31 @@
 
         const VISUALIZER_BASE_LEVEL = 0.08;
 
+        const frequencyFormatter = new Intl.NumberFormat("en-US", {
+            maximumFractionDigits: 0,
+            minimumFractionDigits: 0
+        });
+
         function formatFrequency(value) {
-            if (!Number.isFinite(value) || value <= 0) {
+            if (!Number.isFinite(value) || value < 0) {
                 return "-- hz";
             }
 
-            if (value >= 1000) {
-                return `${(value / 1000).toFixed(1)} khz`;
-            }
-
-            return `${Math.round(value)} hz`;
+            return `${frequencyFormatter.format(Math.round(value))} hz`;
         }
 
-        function describeLowPass(value) {
-            if (!Number.isFinite(value)) {
-                return "--";
-            }
-
-            if (value >= 19900) {
-                return "open";
-            }
-
-            return formatFrequency(value);
-        }
-
-        function describeHighPass(value) {
-            if (!Number.isFinite(value)) {
-                return "--";
-            }
-
-            if (value <= 30) {
-                return "open";
-            }
-
-            return formatFrequency(value);
-        }
+        const rateFormatter = new Intl.NumberFormat("en-US", {
+            maximumSignificantDigits: 3,
+            minimumSignificantDigits: 1
+        });
 
         function updateRateDisplay(rate) {
             if (!Number.isFinite(rate) || rate <= 0) {
-                rateValue.textContent = "-- / -- st";
+                rateValue.textContent = "--";
                 return;
             }
 
-            const semitones = 12 * Math.log2(rate);
-            const semitoneText = semitones >= 0 ? `+${semitones.toFixed(1)}` : semitones.toFixed(1);
-            rateValue.textContent = `${rate.toFixed(2)}x / ${semitoneText} st`;
+            rateValue.textContent = `${rateFormatter.format(rate)}x`;
         }
 
         function computeFilterFrequencies(value) {
@@ -498,16 +478,16 @@
             }
 
             if (settings.mode === "open") {
-                filterValue.textContent = "open";
+                filterValue.textContent = formatFrequency(0);
                 return;
             }
 
             if (settings.mode === "lowpass") {
-                filterValue.textContent = `low pass ${describeLowPass(settings.lowPass)}`;
+                filterValue.textContent = formatFrequency(settings.lowPass);
                 return;
             }
 
-            filterValue.textContent = `high pass ${describeHighPass(settings.highPass)}`;
+            filterValue.textContent = formatFrequency(settings.highPass);
         }
 
         function setLowPassFrequency(value) {
@@ -596,12 +576,14 @@
                 toneLowPass = new toneLibrary.Filter({
                     type: "lowpass",
                     frequency: 20000,
-                    rolloff: -24
+                    rolloff: -24,
+                    Q: 1.5
                 });
                 toneHighPass = new toneLibrary.Filter({
                     type: "highpass",
                     frequency: 20,
-                    rolloff: -12
+                    rolloff: -12,
+                    Q: 1.5
                 });
                 toneAnalyser = new toneLibrary.Analyser("waveform", 256);
 
@@ -663,10 +645,12 @@
             nativeLowPass = audioContext.createBiquadFilter();
             nativeLowPass.type = "lowpass";
             nativeLowPass.frequency.value = 20000;
+            nativeLowPass.Q.value = 1.5;
 
             nativeHighPass = audioContext.createBiquadFilter();
             nativeHighPass.type = "highpass";
             nativeHighPass.frequency.value = 20;
+            nativeHighPass.Q.value = 1.5;
 
             mediaSource.connect(nativeLowPass);
             nativeLowPass.connect(nativeHighPass);
