@@ -1,9 +1,9 @@
 export const artWindowConfig = [
     {
-        id: "city-machine",
-        title: "city machine",
+        id: "Identify",
+        title: "Identify",
         tags: ["three.js", "drift"],
-        sceneId: "rotatingCube",
+        sceneId: "camdepth",
         initialPosition: { x: 140, y: 160 },
         initialSize: { width: 280, height: 180 },
         previewGradient: "linear-gradient(135deg, rgba(96,160,255,0.35), rgba(255,64,64,0.15))",
