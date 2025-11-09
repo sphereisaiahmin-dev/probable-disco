@@ -18,15 +18,7 @@
 body.theme-light {
     --background-color: #f2f1ec;
     --text-color: #111;
-    --accent-color: rgba(17, 17, 17, 0.22);
-    --surface-color: rgba(255, 255, 255, 0.62);
-    --window-background: rgba(255, 255, 255, 0.58);
-    --window-active-viewport: rgba(244, 244, 244, 0.68);
-    --control-background: rgba(17, 17, 17, 0.06);
-    --control-hover-background: rgba(17, 17, 17, 0.14);
     --canvas-background-color: #f1efe8;
-    --divider-color: rgba(0, 0, 0, 0.16);
-    --window-highlight-border: rgba(17, 17, 17, 0.32);
 }
 
 * {
@@ -616,6 +608,8 @@ body.page-art {
     left: 0;
     width: 280px;
     height: 180px;
+    min-width: 240px;
+    min-height: 160px;
     display: grid;
     grid-template-rows: auto 1fr;
     border: 1px solid var(--accent-color);
@@ -637,14 +631,14 @@ body.page-art {
 
 .art-window.is-active {
     position: fixed;
-    top: var(--art-window-gutter);
-    left: var(--art-window-gutter);
-    right: var(--art-window-gutter);
-    bottom: calc(var(--art-window-gutter) + var(--audio-player-clearance));
     border-radius: 0;
     grid-template-rows: auto 1fr;
     z-index: 9;
     cursor: default;
+    min-width: clamp(420px, 60vw, 880px);
+    min-height: clamp(320px, 58vh, 720px);
+    max-width: calc(100vw - var(--art-window-gutter) * 2);
+    max-height: calc(100vh - (var(--art-window-gutter) + var(--audio-player-clearance)));
 }
 
 .art-window.is-active .art-window__viewport {
@@ -706,6 +700,43 @@ body.page-art {
     place-items: center;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
     overflow: hidden;
+}
+
+.art-window__resize-handle {
+    position: absolute;
+    right: 0.35rem;
+    bottom: 0.35rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    border: 1px solid var(--accent-color);
+    border-radius: 0.35rem;
+    background: rgba(0, 0, 0, 0.24);
+    color: transparent;
+    cursor: nwse-resize;
+    pointer-events: auto;
+    opacity: 0.75;
+    transition: opacity 0.3s ease, background 0.3s ease;
+    touch-action: none;
+}
+
+.art-window__resize-handle::after {
+    content: "";
+    position: absolute;
+    inset: 0.25rem;
+    border-bottom: 1px solid var(--accent-color);
+    border-right: 1px solid var(--accent-color);
+    opacity: 0.8;
+}
+
+.art-window__resize-handle:hover,
+.art-window__resize-handle:focus-visible {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.36);
+}
+
+.art-window.is-active .art-window__resize-handle {
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.32);
 }
 
 .art-window__preview {

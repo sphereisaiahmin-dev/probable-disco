@@ -6,6 +6,12 @@ const sceneStates = new Map();
 const activeScenes = new Map();
 let zIndexSeed = 10;
 
+const WINDOW_MIN_WIDTH = 240;
+const WINDOW_MIN_HEIGHT = 160;
+const ACTIVE_MIN_WIDTH = 480;
+const ACTIVE_MIN_HEIGHT = 340;
+const WINDOW_EDGE_GUTTER = 32;
+
 if (layer) {
     init();
 }
@@ -71,10 +77,17 @@ function createWindowElement(config) {
         viewport.appendChild(hint);
     }
 
+    const resizeHandle = document.createElement("button");
+    resizeHandle.type = "button";
+    resizeHandle.className = "art-window__resize-handle";
+    resizeHandle.setAttribute("aria-label", `resize ${config.title} window`);
+    viewport.appendChild(resizeHandle);
+
     windowElement.appendChild(header);
     windowElement.appendChild(viewport);
 
     enableDragging(windowElement, header);
+    enableResizing(windowElement, resizeHandle);
 
     windowElement.addEventListener("click", () => {
         if (windowElement.classList.contains("is-active")) {
@@ -83,6 +96,11 @@ function createWindowElement(config) {
 
         if (windowElement.dataset.dragWasActive === "1") {
             delete windowElement.dataset.dragWasActive;
+            return;
+        }
+
+        if (windowElement.dataset.resizeWasActive === "1") {
+            delete windowElement.dataset.resizeWasActive;
             return;
         }
 
@@ -108,8 +126,13 @@ function applyInitialPlacement(windowElement, config) {
     }
 
     if (initialSize) {
-        windowElement.style.width = `${initialSize.width}px`;
-        windowElement.style.height = `${initialSize.height}px`;
+        const width = Math.max(initialSize.width, WINDOW_MIN_WIDTH);
+        const height = Math.max(initialSize.height, WINDOW_MIN_HEIGHT);
+        windowElement.style.width = `${width}px`;
+        windowElement.style.height = `${height}px`;
+    } else {
+        windowElement.style.width = `${WINDOW_MIN_WIDTH}px`;
+        windowElement.style.height = `${WINDOW_MIN_HEIGHT}px`;
     }
 }
 
@@ -131,7 +154,8 @@ function ensureSceneState(configId) {
             canvas: null,
             viewport: null,
             mounted: false,
-            errorElement: null
+            errorElement: null,
+            resizePending: false
         };
 
         sceneStates.set(configId, state);
@@ -175,10 +199,7 @@ function openWindow(windowElement, configId) {
     storeWindowOrigin(windowElement);
     windowElement.classList.add("is-active");
     document.body.classList.add("art-window-active");
-    windowElement.style.left = "";
-    windowElement.style.top = "";
-    windowElement.style.width = "";
-    windowElement.style.height = "";
+    applyExpandedPlacement(windowElement, state.config);
 
     const context = { canvas: state.canvas, container: viewport, config: state.config };
 
@@ -227,6 +248,10 @@ function closeWindow(windowElement, configId) {
         state.mountPromise = null;
     }
 
+    if (state) {
+        state.resizePending = false;
+    }
+
     const viewport = windowElement.querySelector(".art-window__viewport");
     if (viewport && state?.errorElement) {
         state.errorElement.hidden = true;
@@ -254,6 +279,56 @@ function restoreWindowOrigin(windowElement) {
     windowElement.style.height = windowElement.dataset.originHeight ?? windowElement.style.height;
 }
 
+function applyExpandedPlacement(windowElement, config) {
+    const { width, height } = getExpandedSize(windowElement, config);
+    windowElement.style.width = `${width}px`;
+    windowElement.style.height = `${height}px`;
+
+    const centered = getCenteredPosition(width, height);
+    windowElement.style.left = `${centered.x}px`;
+    windowElement.style.top = `${centered.y}px`;
+
+    const clamped = clampPosition(windowElement, centered.x, centered.y);
+    windowElement.style.left = `${clamped.x}px`;
+    windowElement.style.top = `${clamped.y}px`;
+
+    windowElement.dataset.expandedWidth = Math.round(width).toString();
+    windowElement.dataset.expandedHeight = Math.round(height).toString();
+}
+
+function getExpandedSize(windowElement, config) {
+    const storedWidth = Number.parseFloat(windowElement.dataset.expandedWidth ?? "");
+    const storedHeight = Number.parseFloat(windowElement.dataset.expandedHeight ?? "");
+    const baseWidth = Math.max(config?.initialSize?.width ?? WINDOW_MIN_WIDTH, ACTIVE_MIN_WIDTH);
+    const baseHeight = Math.max(config?.initialSize?.height ?? WINDOW_MIN_HEIGHT, ACTIVE_MIN_HEIGHT);
+    const preferredWidth = Number.isFinite(storedWidth) ? storedWidth : baseWidth;
+    const preferredHeight = Number.isFinite(storedHeight) ? storedHeight : baseHeight;
+    const availableWidth = Math.max(window.innerWidth - WINDOW_EDGE_GUTTER * 2, WINDOW_MIN_WIDTH);
+    const availableHeight = Math.max(window.innerHeight - getAudioPlayerClearance(), WINDOW_MIN_HEIGHT);
+    const minWidth = Math.max(Math.min(ACTIVE_MIN_WIDTH, availableWidth), WINDOW_MIN_WIDTH);
+    const minHeight = Math.max(Math.min(ACTIVE_MIN_HEIGHT, availableHeight), WINDOW_MIN_HEIGHT);
+
+    return {
+        width: clamp(preferredWidth, minWidth, availableWidth),
+        height: clamp(preferredHeight, minHeight, availableHeight)
+    };
+}
+
+function getCenteredPosition(width, height) {
+    const gutter = WINDOW_EDGE_GUTTER;
+    const clearance = getAudioPlayerClearance();
+    const maxX = Math.max(window.innerWidth - width - gutter, gutter);
+    const maxY = Math.max(window.innerHeight - height - clearance, gutter);
+    const centerX = (window.innerWidth - width) / 2;
+    const verticalSpace = window.innerHeight - clearance;
+    const centerY = (verticalSpace - height) / 2;
+
+    return {
+        x: clamp(centerX, gutter, maxX),
+        y: clamp(centerY, gutter, maxY)
+    };
+}
+
 function resizeScene(state) {
     if (!state || !state.viewport || !state.instance || typeof state.instance.resize !== "function") {
         return;
@@ -264,6 +339,18 @@ function resizeScene(state) {
 }
 
 function handleResize() {
+    document.querySelectorAll(".art-window").forEach((windowElement) => {
+        const left = parseFloat(windowElement.style.left ?? "");
+        const top = parseFloat(windowElement.style.top ?? "");
+        if (Number.isNaN(left) || Number.isNaN(top)) {
+            return;
+        }
+
+        const clamped = clampPosition(windowElement, left, top);
+        windowElement.style.left = `${clamped.x}px`;
+        windowElement.style.top = `${clamped.y}px`;
+    });
+
     activeScenes.forEach((state) => {
         resizeScene(state);
     });
@@ -339,15 +426,140 @@ function enableDragging(windowElement, handle) {
     handle.addEventListener("pointercancel", endDrag);
 }
 
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
 function clampPosition(windowElement, x, y) {
     const rect = windowElement.getBoundingClientRect();
-    const maxX = window.innerWidth - rect.width;
-    const maxY = window.innerHeight - rect.height;
+    const gutter = WINDOW_EDGE_GUTTER;
+    const clearance = windowElement.classList.contains("is-active")
+        ? Math.max(getAudioPlayerClearance(), gutter * 2)
+        : gutter;
+    const maxX = Math.max(window.innerWidth - rect.width - gutter, gutter);
+    const maxY = Math.max(window.innerHeight - rect.height - clearance, gutter);
 
     return {
-        x: Math.min(Math.max(x, 16), Math.max(maxX, 16)),
-        y: Math.min(Math.max(y, 16), Math.max(maxY, 16))
+        x: clamp(x, gutter, maxX),
+        y: clamp(y, gutter, maxY)
     };
+}
+
+function getAudioPlayerClearance() {
+    const player = document.querySelector(".audio-player");
+    if (!player) {
+        return WINDOW_EDGE_GUTTER * 2;
+    }
+
+    const { height } = player.getBoundingClientRect();
+    if (!height) {
+        return WINDOW_EDGE_GUTTER * 2;
+    }
+
+    return Math.max(height + WINDOW_EDGE_GUTTER, WINDOW_EDGE_GUTTER * 2);
+}
+
+function notifySceneResize(windowElement) {
+    const configId = windowElement.dataset.windowId;
+    if (!configId) {
+        return;
+    }
+
+    const state = sceneStates.get(configId);
+    if (!state || !state.mounted) {
+        return;
+    }
+
+    if (state.resizePending) {
+        return;
+    }
+
+    state.resizePending = true;
+    requestAnimationFrame(() => {
+        state.resizePending = false;
+        resizeScene(state);
+    });
+}
+
+function enableResizing(windowElement, handle) {
+    let pointerId = null;
+    let startWidth = 0;
+    let startHeight = 0;
+    let startX = 0;
+    let startY = 0;
+
+    handle.addEventListener("pointerdown", (event) => {
+        if (pointerId !== null) {
+            return;
+        }
+
+        pointerId = event.pointerId;
+        const rect = windowElement.getBoundingClientRect();
+        startWidth = rect.width;
+        startHeight = rect.height;
+        startX = event.clientX;
+        startY = event.clientY;
+        event.preventDefault();
+        event.stopPropagation();
+        bringToFront(windowElement);
+        handle.setPointerCapture(pointerId);
+    });
+
+    handle.addEventListener("pointermove", (event) => {
+        if (pointerId !== event.pointerId) {
+            return;
+        }
+
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+        const isActive = windowElement.classList.contains("is-active");
+        const minWidth = isActive ? ACTIVE_MIN_WIDTH : WINDOW_MIN_WIDTH;
+        const minHeight = isActive ? ACTIVE_MIN_HEIGHT : WINDOW_MIN_HEIGHT;
+        const clearance = isActive ? getAudioPlayerClearance() : WINDOW_EDGE_GUTTER * 2;
+        const availableWidth = Math.max(window.innerWidth - WINDOW_EDGE_GUTTER * 2, WINDOW_MIN_WIDTH);
+        const availableHeight = Math.max(window.innerHeight - clearance, WINDOW_MIN_HEIGHT);
+        const widthLowerBound = Math.min(Math.max(minWidth, WINDOW_MIN_WIDTH), availableWidth);
+        const heightLowerBound = Math.min(Math.max(minHeight, WINDOW_MIN_HEIGHT), availableHeight);
+        const width = clamp(startWidth + deltaX, widthLowerBound, availableWidth);
+        const height = clamp(startHeight + deltaY, heightLowerBound, availableHeight);
+
+        windowElement.style.width = `${width}px`;
+        windowElement.style.height = `${height}px`;
+
+        const currentLeft = parseFloat(windowElement.style.left ?? "");
+        const currentTop = parseFloat(windowElement.style.top ?? "");
+        if (!Number.isNaN(currentLeft) && !Number.isNaN(currentTop)) {
+            const clamped = clampPosition(windowElement, currentLeft, currentTop);
+            windowElement.style.left = `${clamped.x}px`;
+            windowElement.style.top = `${clamped.y}px`;
+        }
+
+        notifySceneResize(windowElement);
+    });
+
+    const endResize = (event) => {
+        if (pointerId !== event.pointerId) {
+            return;
+        }
+
+        handle.releasePointerCapture(pointerId);
+        pointerId = null;
+        windowElement.dataset.resizeWasActive = "1";
+        requestAnimationFrame(() => {
+            delete windowElement.dataset.resizeWasActive;
+        });
+
+        const rect = windowElement.getBoundingClientRect();
+        if (windowElement.classList.contains("is-active")) {
+            windowElement.dataset.expandedWidth = Math.round(rect.width).toString();
+            windowElement.dataset.expandedHeight = Math.round(rect.height).toString();
+        }
+
+        notifySceneResize(windowElement);
+    };
+
+    handle.addEventListener("pointerup", endResize);
+    handle.addEventListener("pointercancel", endResize);
 }
 
 function showError(viewport, state, message) {
