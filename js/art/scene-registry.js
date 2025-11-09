@@ -1,9 +1,11 @@
 import { createRotatingCubeScene } from "./scenes/rotatingCube.js";
 import { createPulseFieldScene } from "./scenes/pulseField.js";
+import { webCamDepthInstance } from "./scenes/webcam-depth-instance.js";
 
 const registry = {
     rotatingCube: createRotatingCubeScene,
-    pulseField: createPulseFieldScene
+    pulseField: createPulseFieldScene,
+    camdepth: webCamDepthInstance,
 };
 
 export function createSceneInstance(sceneId) {
