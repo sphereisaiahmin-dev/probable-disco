@@ -36,17 +36,6 @@ function createWindowElement(config) {
     title.textContent = config.title;
     header.appendChild(title);
 
-    if (Array.isArray(config.tags) && config.tags.length) {
-        const meta = document.createElement("div");
-        meta.className = "art-window__meta";
-        config.tags.forEach((tag) => {
-            const badge = document.createElement("span");
-            badge.textContent = tag;
-            meta.appendChild(badge);
-        });
-        header.appendChild(meta);
-    }
-
     const controls = document.createElement("div");
     controls.className = "art-window__controls";
 
@@ -185,6 +174,7 @@ function openWindow(windowElement, configId) {
 
     storeWindowOrigin(windowElement);
     windowElement.classList.add("is-active");
+    document.body.classList.add("art-window-active");
     windowElement.style.left = "";
     windowElement.style.top = "";
     windowElement.style.width = "";
@@ -246,6 +236,8 @@ function closeWindow(windowElement, configId) {
     if (closeButton) {
         closeButton.hidden = true;
     }
+
+    syncBodyActiveState();
 }
 
 function storeWindowOrigin(windowElement) {
@@ -289,6 +281,11 @@ function handleKeydown(event) {
             closeWindow(activeWindow, configId);
         }
     }
+}
+
+function syncBodyActiveState() {
+    const hasActive = document.querySelector(".art-window.is-active");
+    document.body.classList.toggle("art-window-active", Boolean(hasActive));
 }
 
 function enableDragging(windowElement, handle) {

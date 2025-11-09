@@ -3,10 +3,39 @@
     --text-color: #fff;
     --accent-color: rgba(255, 255, 255, 0.25);
     --font-family: 'Share Tech Mono', monospace;
+    --art-window-gutter: clamp(0px, 2vw, 24px);
+    --audio-player-clearance: clamp(112px, 18vh, 180px);
+    --surface-color: rgba(0, 0, 0, 0.55);
+    --window-background: rgba(8, 8, 8, 0.7);
+    --window-active-viewport: rgba(0, 0, 0, 0.65);
+    --control-background: rgba(255, 255, 255, 0.08);
+    --control-hover-background: rgba(255, 255, 255, 0.2);
+    --canvas-background-color: #000;
+    --divider-color: rgba(255, 255, 255, 0.12);
+    --window-highlight-border: rgba(255, 255, 255, 0.55);
+}
+
+body.theme-light {
+    --background-color: #f2f1ec;
+    --text-color: #111;
+    --accent-color: rgba(17, 17, 17, 0.35);
+    --surface-color: rgba(255, 255, 255, 0.78);
+    --window-background: rgba(255, 255, 255, 0.86);
+    --window-active-viewport: rgba(244, 244, 244, 0.9);
+    --control-background: rgba(17, 17, 17, 0.08);
+    --control-hover-background: rgba(17, 17, 17, 0.16);
+    --canvas-background-color: #f1efe8;
+    --divider-color: rgba(0, 0, 0, 0.12);
+    --window-highlight-border: rgba(17, 17, 17, 0.4);
 }
 
 * {
     box-sizing: border-box;
+}
+
+button {
+    border: none;
+    font-family: inherit;
 }
 
 html, body {
@@ -36,7 +65,7 @@ body {
     flex-wrap: wrap;
     padding: 0.75rem 1.5rem;
     border-top: 1px solid var(--accent-color);
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--surface-color);
     backdrop-filter: blur(8px);
     font-size: 0.875rem;
     text-transform: lowercase;
@@ -214,8 +243,8 @@ body {
 
 .audio-player__control {
     appearance: none;
-    border: 1px solid var(--accent-color);
-    background: transparent;
+    border: none;
+    background: var(--control-background);
     color: inherit;
     border-radius: 999px;
     padding: 0.4rem 0.75rem;
@@ -313,7 +342,7 @@ body {
 
 .audio-player__control:hover,
 .audio-player__control:focus-visible {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--control-hover-background);
 }
 
 .audio-player.is-playing .audio-player__ticker-text {
@@ -358,15 +387,26 @@ canvas {
     position: absolute;
     inset: 0;
     outline: 0;
+    background: var(--canvas-background-color);
 }
 
-.site-brand {
+.site-header {
     position: fixed;
     top: clamp(1.5rem, 5vw, 2.75rem);
     right: clamp(1.5rem, 5vw, 2.75rem);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    pointer-events: auto;
+    z-index: 3;
+    transition: opacity 0.3s ease;
+}
+
+.site-brand {
+    position: static;
     padding: 0.75rem 1.5rem;
     border: 1px solid var(--accent-color);
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--surface-color);
     backdrop-filter: blur(8px);
     text-transform: lowercase;
     letter-spacing: 0.14em;
@@ -374,18 +414,46 @@ canvas {
     color: inherit;
     font-size: clamp(1rem, 0.8vw + 1rem, 1.5rem);
     pointer-events: auto;
-    z-index: 2;
-    transition: background 0.3s ease, color 0.3s ease;
+    transition: background 0.3s ease, color 0.3s ease, opacity 0.3s ease;
 }
 
 .site-brand:hover,
 .site-brand:focus {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--control-background);
 }
 
 .site-brand:focus-visible {
     outline: 2px solid var(--text-color);
     outline-offset: 4px;
+}
+
+.theme-toggle {
+    padding: 0.65rem;
+    border-radius: 999px;
+    background: var(--surface-color);
+    color: var(--text-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    line-height: 1;
+    pointer-events: auto;
+    transition: background 0.3s ease, color 0.3s ease, opacity 0.3s ease;
+}
+
+.theme-toggle:hover,
+.theme-toggle:focus-visible {
+    background: var(--control-background);
+}
+
+.theme-toggle:focus-visible {
+    outline: 2px solid var(--text-color);
+    outline-offset: 4px;
+}
+
+body.art-window-active .site-header {
+    opacity: 0;
+    pointer-events: none;
 }
 
 .landing {
@@ -528,7 +596,7 @@ body.page-art {
     grid-template-rows: auto 1fr;
     border: 1px solid var(--accent-color);
     border-radius: 0.6rem;
-    background: rgba(8, 8, 8, 0.7);
+    background: var(--window-background);
     backdrop-filter: blur(12px);
     box-shadow: 0 1.5rem 3.5rem rgba(0, 0, 0, 0.65);
     color: var(--text-color);
@@ -539,15 +607,16 @@ body.page-art {
 
 .art-window:focus-within,
 .art-window:hover {
-    border-color: rgba(255, 255, 255, 0.55);
+    border-color: var(--window-highlight-border);
     box-shadow: 0 2.5rem 4rem rgba(0, 0, 0, 0.75);
 }
 
 .art-window.is-active {
     position: fixed;
-    inset: clamp(0px, 2vw, 24px);
-    width: calc(100vw - clamp(0px, 2vw, 24px) * 2);
-    height: calc(100vh - clamp(0px, 2vw, 24px) * 2);
+    top: var(--art-window-gutter);
+    left: var(--art-window-gutter);
+    right: var(--art-window-gutter);
+    bottom: calc(var(--art-window-gutter) + var(--audio-player-clearance));
     border-radius: 1rem;
     grid-template-rows: auto 1fr;
     z-index: 9;
@@ -555,11 +624,7 @@ body.page-art {
 }
 
 .art-window.is-active .art-window__viewport {
-    background: rgba(0, 0, 0, 0.65);
-}
-
-.art-window.is-active .art-window__meta {
-    opacity: 1;
+    background: var(--window-active-viewport);
 }
 
 .art-window__header {
@@ -568,7 +633,7 @@ body.page-art {
     justify-content: space-between;
     gap: 1rem;
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    border-bottom: 1px solid var(--divider-color);
     letter-spacing: 0.08em;
     cursor: grab;
     user-select: none;
@@ -586,22 +651,6 @@ body.page-art {
     letter-spacing: 0.2em;
 }
 
-.art-window__meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    font-size: 0.65rem;
-    opacity: 0.7;
-    text-transform: uppercase;
-}
-
-.art-window__meta span {
-    padding: 0.25rem 0.5rem;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.06);
-}
-
 .art-window__controls {
     display: flex;
     align-items: center;
@@ -610,8 +659,8 @@ body.page-art {
 
 .art-window__control {
     appearance: none;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    background: var(--control-background);
     color: inherit;
     border-radius: 999px;
     padding: 0.25rem 0.55rem;
@@ -622,8 +671,7 @@ body.page-art {
 
 .art-window__control:hover,
 .art-window__control:focus-visible {
-    background: rgba(255, 255, 255, 0.2);
-    border-color: rgba(255, 255, 255, 0.55);
+    background: var(--control-hover-background);
 }
 
 .art-window__viewport {
