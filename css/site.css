@@ -1,32 +1,32 @@
 :root {
     --background-color: #000;
     --text-color: #fff;
-    --accent-color: rgba(255, 255, 255, 0.25);
+    --accent-color: rgba(255, 255, 255, 0.18);
     --font-family: 'Share Tech Mono', monospace;
-    --art-window-gutter: clamp(0px, 2vw, 24px);
-    --audio-player-clearance: clamp(112px, 18vh, 180px);
-    --surface-color: rgba(0, 0, 0, 0.55);
-    --window-background: rgba(8, 8, 8, 0.7);
-    --window-active-viewport: rgba(0, 0, 0, 0.65);
-    --control-background: rgba(255, 255, 255, 0.08);
-    --control-hover-background: rgba(255, 255, 255, 0.2);
+    --art-window-gutter: clamp(1.25rem, 3vw, 3rem);
+    --audio-player-clearance: max(18vh, 140px);
+    --surface-color: rgba(10, 10, 10, 0.38);
+    --window-background: rgba(8, 8, 8, 0.42);
+    --window-active-viewport: rgba(8, 8, 8, 0.58);
+    --control-background: rgba(255, 255, 255, 0.1);
+    --control-hover-background: rgba(255, 255, 255, 0.22);
     --canvas-background-color: #000;
-    --divider-color: rgba(255, 255, 255, 0.12);
-    --window-highlight-border: rgba(255, 255, 255, 0.55);
+    --divider-color: rgba(255, 255, 255, 0.16);
+    --window-highlight-border: rgba(255, 255, 255, 0.4);
 }
 
 body.theme-light {
     --background-color: #f2f1ec;
     --text-color: #111;
-    --accent-color: rgba(17, 17, 17, 0.35);
-    --surface-color: rgba(255, 255, 255, 0.78);
-    --window-background: rgba(255, 255, 255, 0.86);
-    --window-active-viewport: rgba(244, 244, 244, 0.9);
-    --control-background: rgba(17, 17, 17, 0.08);
-    --control-hover-background: rgba(17, 17, 17, 0.16);
+    --accent-color: rgba(17, 17, 17, 0.22);
+    --surface-color: rgba(255, 255, 255, 0.62);
+    --window-background: rgba(255, 255, 255, 0.58);
+    --window-active-viewport: rgba(244, 244, 244, 0.68);
+    --control-background: rgba(17, 17, 17, 0.06);
+    --control-hover-background: rgba(17, 17, 17, 0.14);
     --canvas-background-color: #f1efe8;
-    --divider-color: rgba(0, 0, 0, 0.12);
-    --window-highlight-border: rgba(17, 17, 17, 0.4);
+    --divider-color: rgba(0, 0, 0, 0.16);
+    --window-highlight-border: rgba(17, 17, 17, 0.32);
 }
 
 * {
@@ -44,7 +44,7 @@ html, body {
     width: 100%;
     height: 100%;
     font-family: var(--font-family);
-    background: var(--background-color);
+    background-color: var(--background-color);
     color: var(--text-color);
 }
 
@@ -53,6 +53,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: background-color 0.9s ease, color 0.6s ease;
 }
 
 .audio-player {
@@ -66,11 +67,12 @@ body {
     padding: 0.75rem 1.5rem;
     border-top: 1px solid var(--accent-color);
     background: var(--surface-color);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(18px) saturate(1.05);
     font-size: 0.875rem;
     text-transform: lowercase;
     pointer-events: auto;
     z-index: 2;
+    transition: border-color 0.6s ease, background-color 0.6s ease, color 0.6s ease;
 }
 
 .audio-player__cluster {
@@ -388,6 +390,25 @@ canvas {
     inset: 0;
     outline: 0;
     background: var(--canvas-background-color);
+    z-index: 0;
+}
+
+.canvas-stack {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+}
+
+[data-background-canvas] {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 1.2s ease;
+}
+
+[data-background-canvas].is-active {
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
 }
 
 .site-header {
@@ -399,7 +420,7 @@ canvas {
     gap: 0.75rem;
     pointer-events: auto;
     z-index: 3;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.45s ease;
 }
 
 .site-brand {
@@ -407,14 +428,14 @@ canvas {
     padding: 0.75rem 1.5rem;
     border: 1px solid var(--accent-color);
     background: var(--surface-color);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(18px) saturate(1.05);
     text-transform: lowercase;
     letter-spacing: 0.14em;
     text-decoration: none;
     color: inherit;
     font-size: clamp(1rem, 0.8vw + 1rem, 1.5rem);
     pointer-events: auto;
-    transition: background 0.3s ease, color 0.3s ease, opacity 0.3s ease;
+    transition: background-color 0.6s ease, color 0.6s ease, opacity 0.6s ease, border-color 0.6s ease;
 }
 
 .site-brand:hover,
@@ -438,7 +459,7 @@ canvas {
     font-size: 1.15rem;
     line-height: 1;
     pointer-events: auto;
-    transition: background 0.3s ease, color 0.3s ease, opacity 0.3s ease;
+    transition: background-color 0.6s ease, color 0.6s ease, opacity 0.6s ease, border-color 0.6s ease;
 }
 
 .theme-toggle:hover,
@@ -475,7 +496,9 @@ body.art-window-active .site-header {
     display: flex;
     width: 100%;
     border: 1px solid var(--accent-color);
-    backdrop-filter: blur(6px);
+    background: var(--surface-color);
+    backdrop-filter: blur(18px) saturate(1.05);
+    transition: border-color 0.6s ease, background-color 0.6s ease;
 }
 
 .nav-link {
@@ -486,7 +509,7 @@ body.art-window-active .site-header {
     text-align: center;
     font-size: clamp(1.5rem, 5vw, 3rem);
     border-right: 1px solid var(--accent-color);
-    transition: color 0.3s ease, background 0.3s ease;
+    transition: color 0.6s ease, background-color 0.6s ease, border-color 0.6s ease;
     pointer-events: auto;
 }
 
@@ -501,7 +524,7 @@ body.art-window-active .site-header {
 
 .nav-link:hover,
 .nav-link:focus {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--control-background);
 }
 
 .page-wrapper {
@@ -520,10 +543,12 @@ body.art-window-active .site-header {
     width: 100%;
     border: 1px solid var(--accent-color);
     padding: clamp(2rem, 6vw, 4rem);
-    backdrop-filter: blur(8px);
+    background: var(--surface-color);
+    backdrop-filter: blur(18px) saturate(1.05);
     display: grid;
     gap: 1.5rem;
     text-transform: lowercase;
+    transition: border-color 0.6s ease, background-color 0.6s ease, color 0.6s ease;
 }
 
 .page-content h1 {
@@ -564,9 +589,7 @@ body.page-art {
     overflow: hidden;
 }
 
-.page-art #glcanvas {
-    position: fixed;
-    inset: 0;
+.page-art [data-background-canvas] {
     width: 100vw;
     height: 100vh;
 }
@@ -576,6 +599,7 @@ body.page-art {
     inset: 0;
     pointer-events: none;
     display: flex;
+    z-index: 2;
 }
 
 .art-window-layer {
@@ -595,20 +619,20 @@ body.page-art {
     display: grid;
     grid-template-rows: auto 1fr;
     border: 1px solid var(--accent-color);
-    border-radius: 0.6rem;
+    border-radius: 0;
     background: var(--window-background);
-    backdrop-filter: blur(12px);
-    box-shadow: 0 1.5rem 3.5rem rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(20px) saturate(1.05);
+    box-shadow: 0 1.25rem 3.5rem rgba(0, 0, 0, 0.5);
     color: var(--text-color);
     pointer-events: auto;
-    transition: box-shadow 0.35s ease, transform 0.35s ease, border-color 0.35s ease;
+    transition: box-shadow 0.45s ease, transform 0.45s ease, border-color 0.45s ease, background-color 0.45s ease;
     overflow: hidden;
 }
 
 .art-window:focus-within,
 .art-window:hover {
     border-color: var(--window-highlight-border);
-    box-shadow: 0 2.5rem 4rem rgba(0, 0, 0, 0.75);
+    box-shadow: 0 2.5rem 4.5rem rgba(0, 0, 0, 0.55);
 }
 
 .art-window.is-active {
@@ -617,7 +641,7 @@ body.page-art {
     left: var(--art-window-gutter);
     right: var(--art-window-gutter);
     bottom: calc(var(--art-window-gutter) + var(--audio-player-clearance));
-    border-radius: 1rem;
+    border-radius: 0;
     grid-template-rows: auto 1fr;
     z-index: 9;
     cursor: default;
@@ -638,10 +662,12 @@ body.page-art {
     cursor: grab;
     user-select: none;
     touch-action: none;
+    background: rgba(0, 0, 0, 0.12);
 }
 
 .art-window.is-active .art-window__header {
     cursor: default;
+    background: rgba(0, 0, 0, 0.18);
 }
 
 .art-window__title {
@@ -678,17 +704,17 @@ body.page-art {
     position: relative;
     display: grid;
     place-items: center;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
     overflow: hidden;
 }
 
 .art-window__preview {
     width: 100%;
     height: 100%;
-    opacity: 0.8;
-    filter: blur(12px) saturate(1.2);
-    transform: scale(1.05);
-    transition: opacity 0.4s ease;
+    opacity: 0.72;
+    filter: blur(18px) saturate(1.25);
+    transform: scale(1.08);
+    transition: opacity 0.45s ease;
 }
 
 .art-window.is-active .art-window__preview {

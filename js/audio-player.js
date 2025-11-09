@@ -3,16 +3,44 @@
     const TRACKS_ENDPOINT = "/api/tracks";
 
     function setupCanvasEventForwarding() {
-        const canvas = document.getElementById("glcanvas");
-        if (!canvas) {
-            return;
-        }
-
         const pointerEvents = ["pointermove", "pointerdown", "pointerup", "pointercancel", "pointerover", "pointerout"];
         const mouseEvents = ["mousemove", "mousedown", "mouseup"];
 
+        const resolveCanvas = () => {
+            const active = document.querySelector("[data-background-canvas].is-active");
+            if (active instanceof HTMLCanvasElement) {
+                return active;
+            }
+            const fallback = document.querySelector("[data-background-canvas]");
+            if (fallback instanceof HTMLCanvasElement) {
+                return fallback;
+            }
+            const legacy = document.getElementById("glcanvas");
+            return legacy instanceof HTMLCanvasElement ? legacy : null;
+        };
+
+        let activeCanvas = resolveCanvas();
+
+        const getActiveCanvas = () => {
+            if (activeCanvas && document.contains(activeCanvas)) {
+                return activeCanvas;
+            }
+            activeCanvas = resolveCanvas();
+            return activeCanvas;
+        };
+
+        document.addEventListener("backgroundcanvaschange", (event) => {
+            const nextCanvas = event.detail?.canvas;
+            if (nextCanvas instanceof HTMLCanvasElement) {
+                activeCanvas = nextCanvas;
+            } else {
+                activeCanvas = resolveCanvas();
+            }
+        });
+
         const forward = (type) => (event) => {
-            if (event.target === canvas) {
+            const canvas = getActiveCanvas();
+            if (!canvas || event.target === canvas) {
                 return;
             }
 

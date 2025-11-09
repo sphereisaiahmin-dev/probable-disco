@@ -13,7 +13,10 @@
     <script src="js/audio-player.js" defer></script>
 </head>
 <body class="page-art">
-    <canvas id="glcanvas" width="100vw" height="100vh" tabindex="1"></canvas>
+    <div class="canvas-stack" data-canvas-stack>
+        <canvas class="is-active" id="glcanvas-dark" data-background-canvas="dark" width="100vw" height="100vh" tabindex="0"></canvas>
+        <canvas id="glcanvas-light" data-background-canvas="light" width="100vw" height="100vh" tabindex="-1" aria-hidden="true"></canvas>
+    </div>
 
     <header class="site-header">
         <a class="site-brand" href="index.html">saintjustus.xyz</a>
@@ -26,36 +29,11 @@
         <div class="art-window-layer" data-art-window-layer></div>
     </div>
 
-    <script type="text/javascript" src="js/patch.js" async></script>
-    <script type="text/javascript">
-        function showError(initiator, ...args) {
-            CABLES.logErrorConsole("[" + initiator + "]", ...args);
-        }
-
-        function patchInitialized(patch) {}
-
-        function patchFinishedLoading(patch) {}
-
-        document.addEventListener("CABLES.jsLoaded", function (event) {
-            CABLES.patch = new CABLES.Patch({
-                patch: CABLES.exportedPatch,
-                "prefixAssetPath": "",
-                "assetPath": "assets/",
-                "jsPath": "js/",
-                "glCanvasId": "glcanvas",
-                "glCanvasResizeToWindow": true,
-                "onError": showError,
-                "onPatchLoaded": patchInitialized,
-                "onFinishedLoading": patchFinishedLoading,
-                "canvas": { "alpha": true, "premultipliedAlpha": true }
-            });
-        });
-
-        document.getElementById('glcanvas').addEventListener('touchmove', (e) => {
-            e.preventDefault();
-        }, false);
-    </script>
+    <script src="js/patch.js" defer></script>
+    <script src="lightmode/js/ops.js" defer></script>
+    <script src="lightmode/js/cgl_copytexture.js" defer></script>
     <script type="module" src="js/theme-toggle.js"></script>
+    <script type="module" src="js/background-scenes.js"></script>
     <script type="module" src="js/art-windows.js"></script>
 </body>
 </html>
