@@ -16,9 +16,17 @@
     <meta itemprop="image" content="screenshot.png">
 </head>
 <body>
-    <canvas id="glcanvas" width="100vw" height="100vh" tabindex="1"></canvas>
+    <div class="canvas-stack" data-canvas-stack>
+        <canvas class="is-active" id="glcanvas-dark" data-background-canvas="dark" width="100vw" height="100vh" tabindex="0"></canvas>
+        <canvas id="glcanvas-light" data-background-canvas="light" width="100vw" height="100vh" tabindex="-1" aria-hidden="true"></canvas>
+    </div>
 
-    <a class="site-brand" href="index.html">saintjustus.xyz</a>
+    <header class="site-header">
+        <a class="site-brand" href="index.html">saintjustus.xyz</a>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" aria-label="switch to light mode">
+            <span aria-hidden="true">☀</span>
+        </button>
+    </header>
 
     <main class="landing" aria-label="Primary navigation">
         <nav class="nav-links" aria-label="Portfolio sections">
@@ -27,39 +35,10 @@
             <a class="nav-link" href="music.html">music.</a>
         </nav>
     </main>
-
-    <script type="text/javascript" src="js/patch.js" async></script>
-    <script type="text/javascript">
-        function showError(initiator, ...args) {
-            CABLES.logErrorConsole("[" + initiator + "]", ...args);
-        }
-
-        function patchInitialized(patch) {
-            // The patch is available to interact with once initialised.
-        }
-
-        function patchFinishedLoading(patch) {
-            // The patch is ready now, all assets have been loaded.
-        }
-
-        document.addEventListener("CABLES.jsLoaded", function (event) {
-            CABLES.patch = new CABLES.Patch({
-                patch: CABLES.exportedPatch,
-                "prefixAssetPath": "",
-                "assetPath": "assets/",
-                "jsPath": "js/",
-                "glCanvasId": "glcanvas",
-                "glCanvasResizeToWindow": true,
-                "onError": showError,
-                "onPatchLoaded": patchInitialized,
-                "onFinishedLoading": patchFinishedLoading,
-                "canvas": { "alpha": true, "premultipliedAlpha": true }
-            });
-        });
-
-        document.getElementById('glcanvas').addEventListener('touchmove', (e) => {
-            e.preventDefault();
-        }, false);
-    </script>
+    <script src="js/patch.js" defer></script>
+    <script src="lightmode/js/ops.js" defer></script>
+    <script src="lightmode/js/cgl_copytexture.js" defer></script>
+    <script type="module" src="js/theme-toggle.js"></script>
+    <script type="module" src="js/background-scenes.js"></script>
 </body>
 </html>

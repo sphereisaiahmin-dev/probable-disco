@@ -34,6 +34,10 @@ function resolveInitialTheme() {
     return THEME_DARK;
 }
 
+function announceTheme(theme) {
+    document.dispatchEvent(new CustomEvent("themechange", { detail: { theme } }));
+}
+
 function applyTheme(theme, toggle) {
     const isLight = theme === THEME_LIGHT;
     document.body.classList.toggle("theme-light", isLight);
@@ -49,18 +53,18 @@ function applyTheme(theme, toggle) {
 
 function initThemeToggle() {
     const toggle = document.querySelector("[data-theme-toggle]");
-    if (!toggle) {
-        return;
-    }
-
     let currentTheme = resolveInitialTheme();
     applyTheme(currentTheme, toggle);
+    announceTheme(currentTheme);
 
-    toggle.addEventListener("click", () => {
-        currentTheme = currentTheme === THEME_LIGHT ? THEME_DARK : THEME_LIGHT;
-        applyTheme(currentTheme, toggle);
-        persistTheme(currentTheme);
-    });
+    if (toggle) {
+        toggle.addEventListener("click", () => {
+            currentTheme = currentTheme === THEME_LIGHT ? THEME_DARK : THEME_LIGHT;
+            applyTheme(currentTheme, toggle);
+            persistTheme(currentTheme);
+            announceTheme(currentTheme);
+        });
+    }
 
     if (window.matchMedia) {
         const mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
@@ -70,6 +74,7 @@ function initThemeToggle() {
             }
             currentTheme = event.matches ? THEME_LIGHT : THEME_DARK;
             applyTheme(currentTheme, toggle);
+            announceTheme(currentTheme);
         };
         if (typeof mediaQuery.addEventListener === "function") {
             mediaQuery.addEventListener("change", handleChange);
