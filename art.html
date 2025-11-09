@@ -15,7 +15,12 @@
 <body class="page-art">
     <canvas id="glcanvas" width="100vw" height="100vh" tabindex="1"></canvas>
 
-    <a class="site-brand" href="index.html">saintjustus.xyz</a>
+    <header class="site-header">
+        <a class="site-brand" href="index.html">saintjustus.xyz</a>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" aria-label="switch to light mode">
+            <span aria-hidden="true">☀</span>
+        </button>
+    </header>
 
     <div class="art-surface" aria-hidden="true">
         <div class="art-window-layer" data-art-window-layer></div>
@@ -50,6 +55,7 @@
             e.preventDefault();
         }, false);
     </script>
+    <script type="module" src="js/theme-toggle.js"></script>
     <script type="module" src="js/art-windows.js"></script>
 </body>
 </html>
