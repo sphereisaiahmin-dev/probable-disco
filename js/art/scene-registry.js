@@ -1,10 +1,9 @@
-import { createRotatingCubeScene } from "./scenes/rotatingCube.js";
-import { createPulseFieldScene } from "./scenes/pulseField.js";
-
+import { createImpressionScene } from "./scenes/impression.js";
+import { createHelloWorldScene } from "./scenes/helloWorld.js";
 
 const registry = {
-    rotatingCube: createRotatingCubeScene,
-    pulseField: createPulseFieldScene
+    impression: createImpressionScene,
+    "hello-world": createHelloWorldScene
 };
 
 export function createSceneInstance(sceneId) {
