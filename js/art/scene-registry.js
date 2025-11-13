@@ -1,9 +1,7 @@
-import { createImpressionScene } from "./scenes/impression.js";
-import { createHelloWorldScene } from "./scenes/helloWorld.js";
+import { createTestArtScene } from "./scenes/testArtScene.js";
 
 const registry = {
-    impression: createImpressionScene,
-    "hello-world": createHelloWorldScene
+    "test-art": createTestArtScene
 };
 
 export function createSceneInstance(sceneId) {
