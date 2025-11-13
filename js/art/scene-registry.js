@@ -1,7 +1,9 @@
 import { createTestArtScene } from "./scenes/testArtScene.js";
+import { createWebcamParticlesScene } from "./scenes/webcamParticlesScene.js";
 
 const registry = {
-    "test-art": createTestArtScene
+    "test-art": createTestArtScene,
+    "webcam-particles": createWebcamParticlesScene
 };
 
 export function createSceneInstance(sceneId) {

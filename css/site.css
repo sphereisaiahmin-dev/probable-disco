@@ -758,6 +758,118 @@ body.page-art {
     display: block;
 }
 
+.art-scene-panel {
+    position: absolute;
+    top: 0.85rem;
+    right: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    min-width: min(260px, 68vw);
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--accent-color);
+    border-radius: 0.75rem;
+    background: rgba(5, 5, 5, 0.78);
+    backdrop-filter: blur(14px) saturate(1.15);
+    box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.35);
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: lowercase;
+    pointer-events: auto;
+    z-index: 2;
+}
+
+.art-scene-panel__group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-weight: 400;
+}
+
+.art-scene-panel__row {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.art-scene-panel__label {
+    text-transform: inherit;
+}
+
+.art-scene-panel__value {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.8;
+}
+
+.art-scene-panel__select,
+.art-scene-panel__slider {
+    appearance: none;
+    width: 100%;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: inherit;
+    font-family: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+}
+
+.art-scene-panel__slider {
+    height: 0.35rem;
+    padding: 0;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.35));
+}
+
+.art-scene-panel__slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.art-scene-panel__slider::-moz-range-thumb {
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.art-scene-panel__status {
+    position: absolute;
+    left: 0.85rem;
+    bottom: 0.85rem;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--accent-color);
+    background: rgba(0, 0, 0, 0.55);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: lowercase;
+    pointer-events: none;
+    opacity: 0.85;
+}
+
+@media (max-width: 640px) {
+    .art-window.is-active .art-scene-panel {
+        left: 0.75rem;
+        right: 0.75rem;
+        top: auto;
+        bottom: 4rem;
+        min-width: unset;
+    }
+
+    .art-scene-panel__status {
+        left: 0.75rem;
+        right: 0.75rem;
+        text-align: center;
+    }
+}
+
 .art-window__hint {
     position: absolute;
     inset: auto 1rem 1rem auto;
