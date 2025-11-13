@@ -19,3 +19,10 @@
 ## Documentation and assets
 - Update this file when expanding the design system or introducing new build steps.
 - Store screenshots or media previews in dedicated directories (e.g., `media/`) to keep the root tidy.
+
+## Modular art window scenes
+- All art scenes live in `js/art/scenes/` and must export a factory (e.g. `export function createMyScene()`) that returns an object with `mount({ canvas, container })`, `resize(width, height)`, and `unmount()` so `js/art/art-windows.js` can manage lifecycle events.
+- Register new scene factories in `js/art/scene-registry.js` and point any floating window entry at that `sceneId` via `js/art/windows-config.js`.
+- Whether you are building raw GLSL, Three.js, or another WebGL pipeline, keep rendering isolated to the provided canvas element, react to `resize` calls, and tear down event listeners/timers in `unmount()`.
+- If a scene needs assets or compiled shaders, load them inside `mount()` and resolve the promise only after the scene is interactive so the window shows errors gracefully when something fails.
+- Do not rely on global singletons from other scenes; every scene should encapsulate its own renderer so multiple windows can cycle through different modules without reloading the page.
