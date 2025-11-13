@@ -37,6 +37,7 @@ export function createWebcamParticlesScene() {
     let videoCtx;
     let maskCanvas;
     let maskCtx;
+    let simulatedVideoSource = null;
     let latestMaskData = null;
     let lastTargetRefresh = 0;
 
@@ -119,6 +120,9 @@ export function createWebcamParticlesScene() {
 
             if (videoStream) {
                 videoStream.getTracks().forEach((track) => track.stop());
+            }
+            if (simulatedVideoSource) {
+                simulatedVideoSource.stop();
             }
             videoStream = null;
             video = null;
@@ -275,21 +279,46 @@ export function createWebcamParticlesScene() {
         video.muted = true;
         video.playsInline = true;
 
-        try {
-            videoStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: false
-            });
-        } catch (error) {
-            statusEl.textContent = "webcam permission denied";
-            throw error;
-        }
+        const streamResult = await acquireVideoStream();
+        videoStream = streamResult.stream;
+        simulatedVideoSource = streamResult.controller;
 
         video.srcObject = videoStream;
-        await video.play();
+        try {
+            await video.play();
+        } catch (error) {
+            console.warn("video play failed, retrying", error);
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            await video.play().catch((playError) => {
+                console.error("unable to start video", playError);
+            });
+        }
         videoCanvas.width = video.videoWidth || 640;
         videoCanvas.height = video.videoHeight || 480;
-        statusEl.textContent = "loading segmentation…";
+        if (!streamResult.simulated) {
+            statusEl.textContent = "loading segmentation…";
+        }
+    }
+
+    async function acquireVideoStream() {
+        if (navigator.mediaDevices?.getUserMedia) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: false
+                });
+                return { stream, simulated: false, controller: null };
+            } catch (error) {
+                console.warn("failed to access webcam, falling back to simulation", error);
+                statusEl.textContent = "webcam unavailable, simulating feed";
+            }
+        } else {
+            console.warn("mediaDevices API is unavailable, using simulated feed");
+            statusEl.textContent = "webcam unsupported, simulating feed";
+        }
+
+        const controller = createSimulatedVideoSource();
+        return { stream: controller.stream, simulated: true, controller };
     }
 
     async function setupSegmentation() {
@@ -306,6 +335,67 @@ export function createWebcamParticlesScene() {
             console.error("failed to load mediapipe", error);
             statusEl.textContent = "segmentation unavailable";
         }
+    }
+
+    function createSimulatedVideoSource() {
+        const width = 640;
+        const height = 480;
+        const sourceCanvas = document.createElement("canvas");
+        sourceCanvas.width = width;
+        sourceCanvas.height = height;
+        const ctx = sourceCanvas.getContext("2d");
+        const bubbles = new Array(12).fill(null).map(() => ({
+            x: Math.random(),
+            y: Math.random(),
+            radius: 0.15 + Math.random() * 0.2,
+            speed: 0.05 + Math.random() * 0.15
+        }));
+        let animationFrame = null;
+
+        const draw = (now) => {
+            animationFrame = requestAnimationFrame(draw);
+            const time = now / 1000;
+            ctx.fillStyle = "#030712";
+            ctx.fillRect(0, 0, width, height);
+
+            const gradient = ctx.createLinearGradient(0, 0, width, height);
+            gradient.addColorStop(0, "rgba(35,99,188,0.65)");
+            gradient.addColorStop(1, "rgba(9,9,20,0.35)");
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.rotate(Math.sin(time * 0.2) * 0.1);
+            ctx.scale(1.2 + Math.sin(time * 0.3) * 0.1, 1.2 + Math.cos(time * 0.3) * 0.1);
+            ctx.fillStyle = "rgba(255,255,255,0.08)";
+            ctx.beginPath();
+            ctx.ellipse(0, 0, width * 0.3, height * 0.4, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            bubbles.forEach((bubble, index) => {
+                const phase = time * bubble.speed + index * 0.35;
+                const x = (Math.sin(phase) * 0.4 + 0.5) * width;
+                const y = (Math.cos(phase * 0.8) * 0.3 + 0.5) * height;
+                const radius = bubble.radius * Math.min(width, height);
+                const alpha = 0.2 + ((Math.sin(phase * 2) + 1) / 2) * 0.5;
+                ctx.beginPath();
+                ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        };
+
+        animationFrame = requestAnimationFrame(draw);
+        const stream = sourceCanvas.captureStream(30);
+
+        return {
+            stream,
+            stop() {
+                cancelAnimationFrame(animationFrame);
+            }
+        };
     }
 
     function handleSegmentationResults(results) {
