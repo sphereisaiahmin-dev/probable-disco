@@ -569,13 +569,13 @@ export function createWebcamParticlesScene() {
         }
 
         vec3 applyWebcam(vec2 sampleUv) {
-            vec3 sample = texture(uVideoTexture, sampleUv).rgb;
-            return mix(vec3(0.05), sample, 0.95);
+            vec3 webcamColor = texture(uVideoTexture, sampleUv).rgb;
+            return mix(vec3(0.05), webcamColor, 0.95);
         }
 
-        vec3 applyPaper(vec2 uv, vec3 sample) {
+        vec3 applyPaper(vec2 uv, vec3 sampleColor) {
             vec4 paper = texture(uPaperTexture, uv);
-            return sample * (0.7 + paper.rgb * 0.5);
+            return sampleColor * (0.7 + paper.rgb * 0.5);
         }
 
         void main() {
