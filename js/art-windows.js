@@ -186,7 +186,7 @@ function openWindow(windowElement, configId) {
 
     state.viewport = viewport;
 
-    if (!state.canvas) {
+    if (!state.canvas && state.config.useCanvas !== false) {
         state.canvas = document.createElement("canvas");
         state.canvas.className = "art-window__canvas";
         viewport.appendChild(state.canvas);
@@ -201,7 +201,7 @@ function openWindow(windowElement, configId) {
     document.body.classList.add("art-window-active");
     applyExpandedPlacement(windowElement, state.config);
 
-    const context = { canvas: state.canvas, container: viewport, config: state.config };
+    const context = { canvas: state.canvas ?? null, container: viewport, config: state.config };
 
     const mountPromise = Promise.resolve(state.instance.mount(context));
     state.mountPromise = mountPromise;
