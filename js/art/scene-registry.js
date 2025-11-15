@@ -1,7 +1,9 @@
+import { createAsciiScene } from "./scenes/asciiScene.js";
 import { createTestArtScene } from "./scenes/testArtScene.js";
 import { createWebcamImpressionsScene } from "./scenes/webcamImpressionsScene.js";
 
 const registry = {
+    "ascii": createAsciiScene,
     "test-art": createTestArtScene,
     "webcam-impressions": createWebcamImpressionsScene
 };

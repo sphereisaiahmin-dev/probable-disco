@@ -1,5 +1,16 @@
 export const artWindowConfig = [
     {
+        id: "ascii",
+        title: "ASCII",
+        tags: ["cables.gl", "iframe"],
+        sceneId: "ascii",
+        initialPosition: { x: 220, y: 120 },
+        initialSize: { width: 480, height: 320 },
+        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.15), rgba(80,80,80,0.35))",
+        hint: "launch stream",
+        useCanvas: false
+    },
+    {
         id: "webcam-impressions",
         title: "impressions",
         tags: ["webcam", "cables.gl"],
