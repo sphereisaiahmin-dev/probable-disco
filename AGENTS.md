@@ -20,6 +20,10 @@
 - Update this file when expanding the design system or introducing new build steps.
 - Store screenshots or media previews in dedicated directories (e.g., `media/`) to keep the root tidy.
 
+## Playwright simulation note
+- When running Playwright or any browser-container based interaction tests, temporarily expose the dev server on `0.0.0.0` (e.g. `HOST=0.0.0.0 PORT=4173 node server.js`) so the external automation context can reach it.
+- Remember to restore the host/IP to the default loopback binding once you are done to avoid accidental exposure.
+
 ## Modular art window scenes
 - All art scenes live in `js/art/scenes/` and must export a factory (e.g. `export function createMyScene()`) that returns an object with `mount({ canvas, container })`, `resize(width, height)`, and `unmount()` so `js/art/art-windows.js` can manage lifecycle events.
 - Register new scene factories in `js/art/scene-registry.js` and point any floating window entry at that `sceneId` via `js/art/windows-config.js`.

@@ -1,13 +1,14 @@
 export const artWindowConfig = [
     {
-        id: "webcam-particles",
-        title: "particle portrait",
-        tags: ["webcam", "glsl", "instanced"],
-        sceneId: "webcam-particles",
+        id: "webcam-impressions",
+        title: "impressions",
+        tags: ["webcam", "cables.gl"],
+        sceneId: "webcam-impressions",
         initialPosition: { x: 160, y: 180 },
         initialSize: { width: 520, height: 360 },
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.2), rgba(80,120,255,0.25))",
-        hint: "use camera"
+        hint: "allow camera",
+        useCanvas: false
     },
     {
         id: "test-art",
