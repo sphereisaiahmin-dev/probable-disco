@@ -92,30 +92,43 @@ function bootstrapLayers() {
 
 function getLayerSelector(layerKey) {
     if (layerKey === "art") {
-        return '[data-window-layer="art"], [data-art-window-layer]';
+        return '[data-art-window-layer], [data-window-layer="art"]:not(.art-window)';
     }
-    return `[data-window-layer="${layerKey}"]`;
+    return `[data-window-layer="${layerKey}"]:not(.art-window)`;
 }
 
 function connectLayer(layerKey, layer, configs) {
     const existingState = layerRegistry.get(layerKey);
-    if (initialisedLayers.has(layer)) {
+    const existingWindows = Array.from(layer.querySelectorAll(".art-window"));
+    const hasHydratedWindows = existingWindows.length > 0;
+    const layerMarkedHydrated = layer.dataset.windowsHydrated === "1";
+
+    if (initialisedLayers.has(layer) || layerMarkedHydrated || hasHydratedWindows) {
+        const windows = reconcileExistingWindows(layer, configs, existingWindows);
+        initialisedLayers.add(layer);
+        layer.dataset.windowLayer = layerKey;
+        layer.dataset.windowsHydrated = "1";
+
         if (existingState) {
             existingState.layer = layer;
-            existingState.windows = existingState.windows.filter((node) => node.isConnected);
+            existingState.windows = windows;
+            existingState.isRevealed = existingState.isRevealed || windows.some((node) => node.classList.contains("is-visible"));
         } else {
             layerRegistry.set(layerKey, {
                 layer,
-                windows: Array.from(layer.querySelectorAll(".art-window")),
-                isRevealed: Boolean(layer.querySelector(".art-window.is-visible")),
+                windows,
+                isRevealed: windows.some((node) => node.classList.contains("is-visible")),
                 isAnimating: false
             });
         }
+
+        attachGlobalListeners();
         return;
     }
 
     initialisedLayers.add(layer);
     layer.dataset.windowLayer = layerKey;
+    layer.dataset.windowsHydrated = "1";
 
     const windows = configs.map((config) => {
         const windowElement = createWindowElement(config);
@@ -133,6 +146,29 @@ function connectLayer(layerKey, layer, configs) {
     attachGlobalListeners();
 }
 
+function reconcileExistingWindows(layer, configs, existingWindows) {
+    const windowsById = new Map();
+
+    existingWindows.forEach((node) => {
+        const configId = node.dataset.windowId;
+        if (!configId || windowsById.has(configId)) {
+            node.remove();
+            return;
+        }
+        windowsById.set(configId, node);
+    });
+
+    return configs.map((config) => {
+        const hydrated = windowsById.get(config.uid);
+        if (hydrated) {
+            return hydrated;
+        }
+        const windowElement = createWindowElement(config);
+        layer.appendChild(windowElement);
+        return windowElement;
+    });
+}
+
 function attachGlobalListeners() {
     if (listenersAttached) {
         return;
@@ -147,8 +183,6 @@ function createWindowElement(config) {
     const windowElement = document.createElement("article");
     windowElement.className = "art-window";
     windowElement.dataset.windowId = config.uid;
-    windowElement.dataset.windowLayer = config.layerKey;
-
     applyInitialPlacement(windowElement, config);
     bringToFront(windowElement);
 
