@@ -1,14 +1,16 @@
 export const workWindowConfig = [
     {
-        id: "systems-lab",
-        title: "systems lab",
-        tags: ["vimeo", "research"],
+        id: "blare-db",
+        title: "blare.db",
+        tags: ["youtube", "performance"],
         type: "embed",
-        embedUrl: "https://player.vimeo.com/video/76979871?h=8272103f6a&title=0&byline=0&portrait=0",
+        embedUrl: "https://www.youtube.com/embed/BXqkB73kWzo?si=rFhJPPzajxmOFdQG&rel=0&modestbranding=1&playsinline=1",
         initialPosition: { x: 160, y: 160 },
         initialSize: { width: 520, height: 320 },
-        hint: "watch process",
-        allow: "autoplay; fullscreen; picture-in-picture",
+        hint: "watch blare.db",
+        allow:
+            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen",
+        embedErrorMessage: "video blocked — open on youtube",
         previewGradient: "linear-gradient(135deg, rgba(80,80,80,0.25), rgba(255,255,255,0.1))"
     },
     {
