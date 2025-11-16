@@ -1,4 +1,10 @@
 (function () {
+    const existingController = window.__saintjustusAudioController;
+    if (existingController?.ready) {
+        existingController.hydrate?.({ pageId: document.documentElement?.dataset?.page });
+        return;
+    }
+
     const STORAGE_KEY = "saintjustus.audioPlayer.state";
     const TRACKS_ENDPOINT = "/api/tracks";
 
@@ -1040,5 +1046,16 @@
         if (!resumeAfterMetadata) {
             updatePlayButton();
         }
+
+        window.__saintjustusAudioController = {
+            ready: true,
+            hydrate(meta = {}) {
+                if (meta?.pageId) {
+                    footer.dataset.pageContext = meta.pageId;
+                }
+            }
+        };
+
+        window.__saintjustusAudioController.hydrate({ pageId: document.documentElement?.dataset?.page });
     });
 })();
