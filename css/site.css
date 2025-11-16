@@ -440,6 +440,11 @@ canvas {
     outline-offset: 4px;
 }
 
+.art-window-active .site-brand {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .theme-toggle {
     padding: 0.65rem;
     border-radius: 999px;

@@ -777,14 +777,12 @@ function restoreWindowOrigin(windowElement) {
 }
 
 function applyExpandedPlacement(windowElement, config) {
-    const headerOffset = getHeaderOffset();
     const bottomClearance = getAudioPlayerClearance(false);
     const width = window.innerWidth;
-    const height = Math.max(window.innerHeight - headerOffset - bottomClearance, ACTIVE_MIN_HEIGHT);
-    const top = headerOffset;
+    const height = Math.max(window.innerHeight - bottomClearance, ACTIVE_MIN_HEIGHT);
 
     windowElement.style.left = "0px";
-    windowElement.style.top = `${top}px`;
+    windowElement.style.top = "0px";
     windowElement.style.width = `${width}px`;
     windowElement.style.height = `${height}px`;
 
@@ -911,13 +909,12 @@ function clamp(value, min, max) {
 function clampPosition(windowElement, x, y) {
     const rect = windowElement.getBoundingClientRect();
     if (windowElement.classList.contains("is-active")) {
-        const headerOffset = getHeaderOffset();
         const clearance = getAudioPlayerClearance(false);
         const maxX = Math.max(window.innerWidth - rect.width, 0);
-        const maxY = Math.max(window.innerHeight - rect.height - clearance, headerOffset);
+        const maxY = Math.max(window.innerHeight - rect.height - clearance, 0);
         return {
             x: clamp(x, 0, maxX),
-            y: clamp(y, headerOffset, maxY)
+            y: clamp(y, 0, maxY)
         };
     }
 
