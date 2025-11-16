@@ -9,82 +9,80 @@ function getPixelRatio() {
 }
 
 export function createTestArtScene() {
-    return function createSceneInstance() {
-        let canvasElement;
-        let containerElement;
-        let context;
-        let animationFrameId;
-        let lastSize = { width: 0, height: 0 };
-        let startTime = 0;
+    let canvasElement;
+    let containerElement;
+    let context;
+    let animationFrameId;
+    let lastSize = { width: 0, height: 0 };
+    let startTime = 0;
 
-        const renderFrame = (timestamp) => {
-            if (!context || !canvasElement) {
-                return;
-            }
-
-            const elapsed = (timestamp - startTime) / 1000;
-            paintScene(context, lastSize, elapsed);
-            animationFrameId = window.requestAnimationFrame(renderFrame);
-        };
-
-        function mount({ canvas, container }) {
-            if (!canvas) {
-                throw new Error("test art scene requires a canvas element");
-            }
-
-            canvasElement = canvas;
-            containerElement = container ?? canvas.parentElement ?? document.body;
-            context = canvasElement.getContext("2d", { alpha: true });
-
-            if (!context) {
-                throw new Error("2d context unavailable for test art scene");
-            }
-
-            const { width, height } = containerElement.getBoundingClientRect();
-            applySize(width, height);
-            startTime = performance.now();
-            animationFrameId = window.requestAnimationFrame(renderFrame);
-            return Promise.resolve();
+    const renderFrame = (timestamp) => {
+        if (!context || !canvasElement) {
+            return;
         }
 
-        function resize(width, height) {
-            applySize(width, height);
+        const elapsed = (timestamp - startTime) / 1000;
+        paintScene(context, lastSize, elapsed);
+        animationFrameId = window.requestAnimationFrame(renderFrame);
+    };
+
+    function mount({ canvas, container }) {
+        if (!canvas) {
+            throw new Error("test art scene requires a canvas element");
         }
 
-        function unmount() {
-            if (animationFrameId) {
-                window.cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
-            }
+        canvasElement = canvas;
+        containerElement = container ?? canvas.parentElement ?? document.body;
+        context = canvasElement.getContext("2d", { alpha: true });
 
-            context = null;
-            canvasElement = null;
-            containerElement = null;
+        if (!context) {
+            throw new Error("2d context unavailable for test art scene");
         }
 
-        function applySize(width, height) {
-            if (!canvasElement || !context) {
-                return;
-            }
+        const { width, height } = containerElement.getBoundingClientRect();
+        applySize(width, height);
+        startTime = performance.now();
+        animationFrameId = window.requestAnimationFrame(renderFrame);
+        return Promise.resolve();
+    }
 
-            const nextWidth = clampSize(width);
-            const nextHeight = clampSize(height);
-            lastSize = { width: nextWidth, height: nextHeight };
+    function resize(width, height) {
+        applySize(width, height);
+    }
 
-            const pixelRatio = getPixelRatio();
-            canvasElement.width = Math.max(1, Math.round(nextWidth * pixelRatio));
-            canvasElement.height = Math.max(1, Math.round(nextHeight * pixelRatio));
-            canvasElement.style.width = `${nextWidth}px`;
-            canvasElement.style.height = `${nextHeight}px`;
-
-            context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    function unmount() {
+        if (animationFrameId) {
+            window.cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
         }
 
-        return {
-            mount,
-            resize,
-            unmount
-        };
+        context = null;
+        canvasElement = null;
+        containerElement = null;
+    }
+
+    function applySize(width, height) {
+        if (!canvasElement || !context) {
+            return;
+        }
+
+        const nextWidth = clampSize(width);
+        const nextHeight = clampSize(height);
+        lastSize = { width: nextWidth, height: nextHeight };
+
+        const pixelRatio = getPixelRatio();
+        canvasElement.width = Math.max(1, Math.round(nextWidth * pixelRatio));
+        canvasElement.height = Math.max(1, Math.round(nextHeight * pixelRatio));
+        canvasElement.style.width = `${nextWidth}px`;
+        canvasElement.style.height = `${nextHeight}px`;
+
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    }
+
+    return {
+        mount,
+        resize,
+        unmount
     };
 }
 
