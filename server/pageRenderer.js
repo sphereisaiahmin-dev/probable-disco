@@ -7,6 +7,7 @@ const { getPageContent } = require('./pageRegistry');
 function resolveLayoutTemplatePath() {
     const candidatePaths = [
         path.join(__dirname, 'views', 'layout.html'),
+        path.join(__dirname, 'server', 'views', 'layout.html'),
         path.join(__dirname, '..', 'server', 'views', 'layout.html'),
         path.join(process.cwd(), 'server', 'views', 'layout.html')
     ];

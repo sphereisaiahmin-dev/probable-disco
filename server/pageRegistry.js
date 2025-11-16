@@ -1,7 +1,23 @@
 const path = require('node:path');
 const fs = require('node:fs');
 
-const VIEWS_DIR = path.join(__dirname, 'views');
+function resolveViewsDirectory() {
+    const candidateDirectories = [
+        path.join(__dirname, 'views'),
+        path.join(__dirname, 'server', 'views'),
+        path.join(__dirname, '..', 'server', 'views'),
+        path.join(process.cwd(), 'server', 'views')
+    ];
+
+    return candidateDirectories.find((candidatePath) => fs.existsSync(candidatePath));
+}
+
+const VIEWS_DIR = resolveViewsDirectory();
+
+if (!VIEWS_DIR) {
+    throw new Error('Unable to locate views directory');
+}
+
 const PAGES_DIR = path.join(VIEWS_DIR, 'pages');
 
 const pageRegistry = [
