@@ -8,14 +8,17 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build": "node ./serverless-build.js",
+    "dev": "HOST=0.0.0.0 node server.js"
   },
   "keywords": [],
   "author": "saintjustus",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "serverless-http": "^4.0.0"
   },
   "devDependencies": {
     "supertest": "^7.1.4"

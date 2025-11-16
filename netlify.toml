@@ -1,0 +1,34 @@
+[build]
+  command = "npm run build"
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  included_files = [
+    "css/**",
+    "js/**",
+    "lightmode/**",
+    "cdnlogs/**",
+    "server/**",
+    "legal.txt",
+    "LICENCE",
+    "cables.txt"
+  ]
+  node_bundler = "esbuild"
+  external_node_modules = ["express"]
+
+[dev]
+  command = "npm run dev"
+  functions = "netlify/functions"
+  targetPort = 3000
+  autoLaunch = false
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/site/api/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/site/:splat"
+  status = 200
