@@ -4,7 +4,23 @@ const path = require('node:path');
 const packageJson = require('../package.json');
 const { getPageContent } = require('./pageRegistry');
 
-const layoutTemplate = fs.readFileSync(path.join(__dirname, 'views', 'layout.html'), 'utf8');
+function resolveLayoutTemplatePath() {
+    const candidatePaths = [
+        path.join(__dirname, 'views', 'layout.html'),
+        path.join(__dirname, '..', 'server', 'views', 'layout.html'),
+        path.join(process.cwd(), 'server', 'views', 'layout.html')
+    ];
+
+    return candidatePaths.find((candidatePath) => fs.existsSync(candidatePath));
+}
+
+const layoutTemplatePath = resolveLayoutTemplatePath();
+
+if (!layoutTemplatePath) {
+    throw new Error('Unable to locate layout template file');
+}
+
+const layoutTemplate = fs.readFileSync(layoutTemplatePath, 'utf8');
 const assetVersion = process.env.ASSET_VERSION || process.env.GIT_COMMIT || packageJson.version || 'dev';
 
 function buildAssetUrl(assetPath) {
