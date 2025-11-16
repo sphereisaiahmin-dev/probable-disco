@@ -14,17 +14,14 @@ export const workWindowConfig = [
         previewGradient: "linear-gradient(135deg, rgba(80,80,80,0.25), rgba(255,255,255,0.1))"
     },
     {
-        id: "console-toolkit",
-        title: "console toolkit",
-        tags: ["youtube", "prototype"],
+        id: "crsvr",
+        title: "crsvr",
+        tags: ["video", "installation"],
         type: "embed",
-        embedUrl: "https://www.youtube.com/embed/djV11Xbc914?rel=0&modestbranding=1&playsinline=1",
+        videoSrc: "https://stjaudio.b-cdn.net/video/minimarquenort.mp4",
         initialPosition: { x: 360, y: 260 },
-        initialSize: { width: 480, height: 300 },
-        hint: "stream walkthrough",
-        thumbnail: "https://images.unsplash.com/photo-1470246973918-29a93221c455?auto=format&fit=crop&w=1200&q=80",
-        allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share",
-        embedErrorMessage: "video blocked — open on youtube",
+        initialSize: { width: 520, height: 320 },
+        hint: "preview crsvr",
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(0,0,0,0.25))"
     },
     {
