@@ -1,39 +1,45 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-page="{{pageId}}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-    <title>art — saintjustus.xyz</title>
-    <meta name="description" content="Modular floating windows showcasing generative works by saintjustus.">
+    <title>{{title}}</title>
+    <meta name="description" content="{{description}}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/site.css">
+    <link rel="stylesheet" href="{{cssSite}}">
+    <meta itemprop="name" content="{{title}}">
+    <meta itemprop="description" content="{{description}}">
+    <meta itemprop="image" content="{{metaImage}}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js" integrity="sha384-3946Q06UAmZay3zeE4BKiFHZUjTbO8RWJf6qxfhuK9SMP+RPHdztQL1I9vJqPgPZ" crossorigin="anonymous" defer></script>
-    <script src="js/audio-player.js" defer></script>
+    <script src="{{jsAudioPlayer}}" defer></script>
 </head>
-<body class="page-art">
+<body data-app-shell data-route="{{route}}">
     <div class="canvas-stack" data-canvas-stack>
         <canvas class="is-active" id="glcanvas-dark" data-background-canvas="dark" width="100vw" height="100vh" tabindex="0"></canvas>
         <canvas id="glcanvas-light" data-background-canvas="light" width="100vw" height="100vh" tabindex="-1" aria-hidden="true"></canvas>
     </div>
 
     <header class="site-header">
-        <a class="site-brand" href="index.html">saintjustus.xyz</a>
+        <a class="site-brand" href="/">saintjustus.xyz</a>
         <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" aria-label="switch to light mode">
             <span aria-hidden="true">☀</span>
         </button>
     </header>
 
-    <div class="art-surface" aria-hidden="true">
-        <div class="art-window-layer" data-art-window-layer></div>
+    <div data-page-root>
+        {{{content}}}
     </div>
 
-    <script src="js/patch.js" defer></script>
-    <script src="lightmode/js/ops.js" defer></script>
-    <script src="lightmode/js/cgl_copytexture.js" defer></script>
-    <script type="module" src="js/theme-toggle.js"></script>
-    <script type="module" src="js/background-scenes.js"></script>
-    <script type="module" src="js/art-windows.js"></script>
+    {{{pageBootstrap}}}
+
+    <script src="{{jsPatch}}" defer></script>
+    <script src="{{lightOps}}" defer></script>
+    <script src="{{lightCopy}}" defer></script>
+    <script type="module" src="{{jsAppShell}}"></script>
+    <script type="module" src="{{jsThemeToggle}}"></script>
+    <script type="module" src="{{jsBackgroundScenes}}"></script>
+    {{{pageScripts}}}
 </body>
 </html>

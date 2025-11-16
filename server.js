@@ -3,9 +3,12 @@ const express = require('express');
 
 const trackCatalog = require('./server/trackCatalog');
 const serverConfig = require('./server/config.json');
+const { pageRegistry, getPageByRoute } = require('./server/pageRegistry');
+const { buildPagePayload, renderFullDocument } = require('./server/pageRenderer');
 
 const DEFAULT_HOST = serverConfig.host || '127.0.0.1';
 const DEFAULT_ARTIST = 'saintjustus';
+const SHELL_HEADER = 'saintjustus-shell';
 
 trackCatalog.initialize();
 
@@ -72,10 +75,50 @@ app.get('/api/tracks', (req, res) => {
     res.json({ tracks: buildTrackResponse() });
 });
 
+function isShellRequest(req) {
+    return req.get('X-Requested-With') === SHELL_HEADER || req.query.fragment === '1';
+}
+
+function sendPage(pageConfig, req, res, next) {
+    const payload = buildPagePayload(pageConfig.id);
+    if (!payload) {
+        return next();
+    }
+
+    if (isShellRequest(req)) {
+        return res.json({ page: payload });
+    }
+
+    return res.send(renderFullDocument(payload));
+}
+
+function routePattern(route) {
+    const cleanRoute = route === '/' ? '/' : route.replace(/\/+$/, '');
+    if (cleanRoute === '/') {
+        return ['/'];
+    }
+    return [cleanRoute, `${cleanRoute}/`];
+}
+
+pageRegistry.forEach((pageConfig) => {
+    const patterns = routePattern(pageConfig.route);
+    app.get(patterns, (req, res, next) => sendPage(pageConfig, req, res, next));
+});
+
 app.use((req, res, next) => {
     if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: 'not found' });
     }
+
+    const page = getPageByRoute(req.path);
+    if (page) {
+        return sendPage(page, req, res, next);
+    }
+
+    if (req.accepts('html')) {
+        return res.status(404).send('<!DOCTYPE html><html><head><title>not found — saintjustus.xyz</title></head><body><p>page not found.</p></body></html>');
+    }
+
     return next();
 });
 

@@ -576,12 +576,12 @@ body.art-window-active .site-header {
     }
 }
 
-body.page-art {
+html[data-page="art"] body {
     display: block;
     overflow: hidden;
 }
 
-.page-art [data-background-canvas] {
+html[data-page="art"] [data-background-canvas] {
     width: 100vw;
     height: 100vh;
 }
