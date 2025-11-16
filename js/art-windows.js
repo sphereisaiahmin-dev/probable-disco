@@ -16,6 +16,7 @@ const initialisedLayers = new WeakSet();
 const windowStates = new Map();
 const activeSceneStates = new Map();
 const embedPreviewCache = new Map();
+const runtimePreviewCache = new Map();
 
 let zIndexSeed = 10;
 let listenersAttached = false;
@@ -231,6 +232,8 @@ function createWindowElement(config) {
     }
     viewport.appendChild(preview);
 
+    const runtimePreviewApplied = applyRuntimePreview(config, preview);
+
     if (config.hint) {
         const hint = document.createElement("span");
         hint.className = "art-window__hint";
@@ -238,7 +241,7 @@ function createWindowElement(config) {
         viewport.appendChild(hint);
     }
 
-    if (config.type === "embed") {
+    if (config.type === "embed" && !runtimePreviewApplied) {
         hydrateEmbedPreview(config, preview);
     }
 
@@ -286,6 +289,10 @@ function hydrateEmbedPreview(config, preview) {
         return;
     }
 
+    if (applyRuntimePreview(config, preview)) {
+        return;
+    }
+
     if (config.thumbnail) {
         preview.style.backgroundImage = `url(${config.thumbnail})`;
         preview.classList.add("has-image");
@@ -314,6 +321,21 @@ function hydrateEmbedPreview(config, preview) {
         preview.style.backgroundImage = `url(${thumbnailUrl})`;
         preview.classList.add("has-image");
     });
+}
+
+function applyRuntimePreview(config, preview) {
+    if (!config || config.layerKey !== "art" || !preview) {
+        return false;
+    }
+
+    const runtimePreview = runtimePreviewCache.get(config.uid);
+    if (!runtimePreview) {
+        return false;
+    }
+
+    preview.style.backgroundImage = `url(${runtimePreview})`;
+    preview.classList.add("has-image", "has-runtime-thumbnail");
+    return true;
 }
 
 function applyInitialPlacement(windowElement, config) {
@@ -349,7 +371,7 @@ function getInitialWindowPosition(config, size) {
     const state = ensurePlacementState(layerKey);
     const bounds = state.bounds;
     const { initialPosition } = config;
-    if (initialPosition) {
+    if (initialPosition && !usesRandomPlacement(layerKey)) {
         const hinted = clampToBounds(initialPosition, size, bounds);
         if (!hasCollision(hinted, size, state.occupied)) {
             state.occupied.push({ ...hinted, width: size.width, height: size.height });
@@ -371,7 +393,7 @@ function ensurePlacementState(layerKey) {
             signature,
             expectedWindows: totalWindows,
             bounds,
-            positions: generatePlacementPositions(totalWindows, bounds),
+            positions: generatePlacementPositions(totalWindows, bounds, layerKey),
             occupied: [],
             cursor: 0
         };
@@ -405,9 +427,18 @@ function getHeaderOffset() {
     return rect?.bottom ?? header.offsetHeight ?? 0;
 }
 
-function generatePlacementPositions(total, bounds) {
+function generatePlacementPositions(total, bounds, layerKey) {
     if (!total) {
         return [];
+    }
+
+    if (usesRandomPlacement(layerKey)) {
+        const widthRange = Math.max(bounds.width - WINDOW_DEFAULT_WIDTH, 1);
+        const heightRange = Math.max(bounds.height - WINDOW_DEFAULT_HEIGHT, 1);
+        return Array.from({ length: total }, () => ({
+            x: bounds.left + Math.random() * widthRange,
+            y: bounds.top + Math.random() * heightRange
+        }));
     }
 
     const safeWidth = WINDOW_DEFAULT_WIDTH + WINDOW_EDGE_GUTTER;
@@ -460,6 +491,10 @@ function findPlacementSlot(state, size) {
     }
 
     return clampToBounds({ x: bounds.left, y: bounds.top }, size, bounds);
+}
+
+function usesRandomPlacement(layerKey) {
+    return layerKey === "art";
 }
 
 function clampToBounds(position, size, bounds) {
@@ -715,10 +750,14 @@ function closeWindow(windowElement, configId) {
         return;
     }
 
+    const state = windowStates.get(configId);
+    if (state) {
+        captureRuntimePreview(windowElement, state);
+    }
+
     windowElement.classList.remove("is-active");
     restoreWindowOrigin(windowElement);
 
-    const state = windowStates.get(configId);
     if (state && state.mounted) {
         if (state.config.type === "scene") {
             try {
@@ -760,6 +799,36 @@ function closeWindow(windowElement, configId) {
     }
 
     syncBodyActiveState();
+}
+
+function captureRuntimePreview(windowElement, state) {
+    if (!state || state.config.layerKey !== "art" || state.config.type !== "scene") {
+        return;
+    }
+
+    const canvas = state.canvas;
+    if (!canvas || typeof canvas.toDataURL !== "function" || canvas.width === 0 || canvas.height === 0) {
+        return;
+    }
+
+    let dataUrl = null;
+    try {
+        dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+    } catch (error) {
+        console.warn("failed to capture art window preview", error);
+        return;
+    }
+
+    if (!dataUrl) {
+        return;
+    }
+
+    runtimePreviewCache.set(state.config.uid, dataUrl);
+    const preview = windowElement.querySelector(".art-window__preview");
+    if (preview) {
+        preview.style.backgroundImage = `url(${dataUrl})`;
+        preview.classList.add("has-image", "has-runtime-thumbnail");
+    }
 }
 
 function storeWindowOrigin(windowElement) {
