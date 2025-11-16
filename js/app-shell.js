@@ -26,6 +26,7 @@ function initShell(initialPage) {
     const pageCache = new Map();
     const descriptionMeta = document.querySelector('meta[name="description"]');
     const itempropMeta = document.querySelector('meta[itemprop="description"]');
+    const windowPages = new Set(['art', 'work', 'music']);
     let activePath = normalisePath(window.location.pathname);
     let isNavigating = false;
 
@@ -40,6 +41,12 @@ function initShell(initialPage) {
             updateNavState(initialPage.id);
             window.history.replaceState({ path: initialPage.route }, '', window.location.pathname);
         }
+    }
+
+    if (initialPage?.id === 'home') {
+        requestAnimationFrame(() => {
+            animateHomeNavEntrance();
+        });
     }
 
     async function navigateTo(url, { replace = false } = {}) {
@@ -98,6 +105,11 @@ function initShell(initialPage) {
         updateHistory(url, payload, replaceState);
         window.__saintjustusAudioController?.hydrate?.({ pageId: payload.id });
         document.dispatchEvent(new CustomEvent('shell:navigation', { detail: { pageId: payload.id, route: payload.route } }));
+        if (payload.id === 'home') {
+            requestAnimationFrame(() => {
+                animateHomeNavEntrance();
+            });
+        }
     }
 
     function unmountActivePage() {
@@ -198,6 +210,75 @@ function initShell(initialPage) {
         return pathname;
     }
 
+    function resolvePageIdFromPath(pathname) {
+        const normalised = normalisePath(pathname);
+        if (normalised === '/') {
+            return 'home';
+        }
+        if (normalised === '/art') {
+            return 'art';
+        }
+        if (normalised === '/work') {
+            return 'work';
+        }
+        if (normalised === '/music') {
+            return 'music';
+        }
+        return null;
+    }
+
+    function dispatchNavigationIntent(targetId) {
+        document.dispatchEvent(new CustomEvent('shell:navigate-intent', { detail: { targetId } }));
+        if (document.documentElement.dataset.page === 'home' && targetId && windowPages.has(targetId)) {
+            animateHomeNavExit(targetId);
+        }
+    }
+
+    function animateHomeNavExit(targetId) {
+        if (!targetId) {
+            return;
+        }
+        const navContainer = document.querySelector('.nav-links');
+        if (!navContainer) {
+            return;
+        }
+        const navLinks = Array.from(navContainer.querySelectorAll('[data-nav-link]'));
+        if (!navLinks.length) {
+            return;
+        }
+        const targetIndex = navLinks.findIndex((link) => link.dataset.navLink === targetId);
+        if (targetIndex === -1) {
+            return;
+        }
+        const maxDistance = Math.max(...navLinks.map((_, index) => Math.abs(index - targetIndex)));
+        navLinks.forEach((link, index) => {
+            const distance = Math.abs(index - targetIndex);
+            const delay = (maxDistance - distance) * 90;
+            link.style.setProperty('--nav-transition-delay', `${delay}ms`);
+            link.classList.remove('nav-link--fade-in');
+            link.classList.add('nav-link--fade-out');
+        });
+    }
+
+    function animateHomeNavEntrance() {
+        const navContainer = document.querySelector('.nav-links');
+        if (!navContainer) {
+            return;
+        }
+        const navLinks = Array.from(navContainer.querySelectorAll('[data-nav-link]'));
+        if (!navLinks.length) {
+            return;
+        }
+        navLinks.forEach((link, index) => {
+            link.classList.remove('nav-link--fade-out');
+            link.classList.remove('nav-link--fade-in');
+            link.style.setProperty('--nav-transition-delay', `${index * 90}ms`);
+            requestAnimationFrame(() => {
+                link.classList.add('nav-link--fade-in');
+            });
+        });
+    }
+
     document.addEventListener('click', (event) => {
         if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
             return;
@@ -225,6 +306,8 @@ function initShell(initialPage) {
             return;
         }
         event.preventDefault();
+        const targetPageId = anchor.dataset.navLink || resolvePageIdFromPath(url.pathname);
+        dispatchNavigationIntent(targetPageId);
         navigateTo(`${url.pathname}${url.search}`);
     });
 

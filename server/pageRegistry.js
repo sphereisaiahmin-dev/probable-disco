@@ -19,7 +19,7 @@ const pageRegistry = [
         template: 'work',
         title: 'work — saintjustus.xyz',
         description: 'Technology and research projects by saintjustus.',
-        modules: []
+        modules: ['/js/art-windows.js']
     },
     {
         id: 'art',
@@ -35,7 +35,7 @@ const pageRegistry = [
         template: 'music',
         title: 'music — saintjustus.xyz',
         description: 'Audio releases, mixes, and the saintjustus radio experience.',
-        modules: []
+        modules: ['/js/art-windows.js']
     }
 ];
 

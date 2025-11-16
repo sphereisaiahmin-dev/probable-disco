@@ -16,7 +16,8 @@ test('serves the shared layout for static routes', async () => {
     const response = await request(app).get('/work').expect(200).expect('Content-Type', /html/);
     assert.match(response.text, /data-page-root/);
     assert.ok(response.text.includes(versionedAsset('/css/site.css')));
-    assert.ok(response.text.includes('<main class="page-wrapper"'));
+    assert.ok(response.text.includes('class="art-page art-page--work"'));
+    assert.ok(response.text.includes('data-window-layer="work"'));
 });
 
 test('returns fragment payloads for shell requests', async () => {
@@ -29,7 +30,7 @@ test('returns fragment payloads for shell requests', async () => {
     assert.ok(response.body.page);
     assert.equal(response.body.page.id, 'music');
     assert.match(response.body.page.content, /data-page-fragment/);
-    assert.deepEqual(response.body.page.modules, []);
+    assert.deepEqual(response.body.page.modules, [versionedAsset('/js/art-windows.js')]);
 });
 
 test('art route exposes per-page modules', async () => {
