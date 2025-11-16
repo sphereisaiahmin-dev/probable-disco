@@ -1,10 +1,24 @@
 import { artWindowConfig } from "./art/windows-config.js";
+import { workWindowConfig } from "./work/windows-config.js";
+import { musicWindowConfig } from "./music/windows-config.js";
 import { createSceneInstance } from "./art/scene-registry.js";
 
-const layer = document.querySelector("[data-art-window-layer]");
-const sceneStates = new Map();
-const activeScenes = new Map();
+const configIndex = new Map();
+
+const windowConfigSets = {
+    art: prepareConfigs("art", artWindowConfig),
+    work: prepareConfigs("work", workWindowConfig),
+    music: prepareConfigs("music", musicWindowConfig)
+};
+
+const layerRegistry = new Map();
+const initialisedLayers = new WeakSet();
+const windowStates = new Map();
+const activeSceneStates = new Map();
+const embedPreviewCache = new Map();
+
 let zIndexSeed = 10;
+let listenersAttached = false;
 
 const WINDOW_MIN_WIDTH = 240;
 const WINDOW_MIN_HEIGHT = 160;
@@ -12,24 +26,128 @@ const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
 const WINDOW_EDGE_GUTTER = 32;
 
-if (layer) {
-    init();
+bootstrapLayers();
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+        bootstrapLayers();
+        revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
+    });
+} else {
+    requestAnimationFrame(() => {
+        revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
+    });
 }
 
-function init() {
-    artWindowConfig.forEach((config) => {
+document.addEventListener("shell:navigation", (event) => {
+    const targetId = event?.detail?.pageId;
+    requestAnimationFrame(() => {
+        bootstrapLayers();
+        revealLayer(targetId);
+    });
+});
+
+document.addEventListener("shell:navigate-intent", (event) => {
+    const currentPage = document.documentElement.dataset.page;
+    const targetId = event?.detail?.targetId;
+    if (!currentPage || currentPage === targetId) {
+        return;
+    }
+    dismissLayer(currentPage);
+});
+
+function prepareConfigs(layerKey, entries) {
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+
+    return entries.map((entry, index) => {
+        const type = entry.type || (layerKey === "art" ? "scene" : "embed");
+        const slug = entry.id || `${layerKey}-${index + 1}`;
+        const uid = `${layerKey}:${slug}`;
+        const config = {
+            ...entry,
+            id: slug,
+            uid,
+            layerKey,
+            order: index,
+            type
+        };
+        configIndex.set(uid, config);
+        return config;
+    });
+}
+
+function bootstrapLayers() {
+    Object.entries(windowConfigSets).forEach(([layerKey, configs]) => {
+        const selector = getLayerSelector(layerKey);
+        if (!selector) {
+            return;
+        }
+        document.querySelectorAll(selector).forEach((layer) => {
+            connectLayer(layerKey, layer, configs);
+        });
+    });
+}
+
+function getLayerSelector(layerKey) {
+    if (layerKey === "art") {
+        return '[data-window-layer="art"], [data-art-window-layer]';
+    }
+    return `[data-window-layer="${layerKey}"]`;
+}
+
+function connectLayer(layerKey, layer, configs) {
+    const existingState = layerRegistry.get(layerKey);
+    if (initialisedLayers.has(layer)) {
+        if (existingState) {
+            existingState.layer = layer;
+            existingState.windows = existingState.windows.filter((node) => node.isConnected);
+        } else {
+            layerRegistry.set(layerKey, {
+                layer,
+                windows: Array.from(layer.querySelectorAll(".art-window")),
+                isRevealed: Boolean(layer.querySelector(".art-window.is-visible")),
+                isAnimating: false
+            });
+        }
+        return;
+    }
+
+    initialisedLayers.add(layer);
+    layer.dataset.windowLayer = layerKey;
+
+    const windows = configs.map((config) => {
         const windowElement = createWindowElement(config);
         layer.appendChild(windowElement);
+        return windowElement;
     });
+
+    layerRegistry.set(layerKey, {
+        layer,
+        windows,
+        isRevealed: false,
+        isAnimating: false
+    });
+
+    attachGlobalListeners();
+}
+
+function attachGlobalListeners() {
+    if (listenersAttached) {
+        return;
+    }
 
     window.addEventListener("resize", handleResize);
     document.addEventListener("keydown", handleKeydown);
+    listenersAttached = true;
 }
 
 function createWindowElement(config) {
     const windowElement = document.createElement("article");
     windowElement.className = "art-window";
-    windowElement.dataset.windowId = config.id;
+    windowElement.dataset.windowId = config.uid;
+    windowElement.dataset.windowLayer = config.layerKey;
 
     applyInitialPlacement(windowElement, config);
     bringToFront(windowElement);
@@ -54,7 +172,7 @@ function createWindowElement(config) {
 
     closeButton.addEventListener("click", (event) => {
         event.stopPropagation();
-        closeWindow(windowElement, config.id);
+        closeWindow(windowElement, config.uid);
     });
 
     controls.appendChild(closeButton);
@@ -75,6 +193,10 @@ function createWindowElement(config) {
         hint.className = "art-window__hint";
         hint.textContent = config.hint;
         viewport.appendChild(hint);
+    }
+
+    if (config.type === "embed") {
+        hydrateEmbedPreview(config, preview);
     }
 
     const resizeHandle = document.createElement("button");
@@ -104,7 +226,7 @@ function createWindowElement(config) {
             return;
         }
 
-        openWindow(windowElement, config.id);
+        openWindow(windowElement, config.uid);
     });
 
     windowElement.addEventListener("pointerdown", () => {
@@ -112,6 +234,41 @@ function createWindowElement(config) {
     });
 
     return windowElement;
+}
+
+function hydrateEmbedPreview(config, preview) {
+    if (!preview) {
+        return;
+    }
+
+    if (config.thumbnail) {
+        preview.style.backgroundImage = `url(${config.thumbnail})`;
+        preview.classList.add("has-image");
+        return;
+    }
+
+    if (!config.embedUrl) {
+        return;
+    }
+
+    const cacheKey = config.embedUrl;
+    if (!embedPreviewCache.has(cacheKey)) {
+        embedPreviewCache.set(
+            cacheKey,
+            fetch(`https://noembed.com/embed?url=${encodeURIComponent(cacheKey)}`)
+                .then((response) => (response.ok ? response.json() : null))
+                .then((payload) => payload?.thumbnail_url || null)
+                .catch(() => null)
+        );
+    }
+
+    embedPreviewCache.get(cacheKey)?.then((thumbnailUrl) => {
+        if (!thumbnailUrl || !preview.isConnected) {
+            return;
+        }
+        preview.style.backgroundImage = `url(${thumbnailUrl})`;
+        preview.classList.add("has-image");
+    });
 }
 
 function applyInitialPlacement(windowElement, config) {
@@ -141,27 +298,29 @@ function bringToFront(windowElement) {
     windowElement.style.zIndex = zIndexSeed.toString();
 }
 
-function ensureSceneState(configId) {
-    if (!sceneStates.has(configId)) {
-        const config = artWindowConfig.find((entry) => entry.id === configId);
+function ensureWindowState(configId) {
+    if (!windowStates.has(configId)) {
+        const config = configIndex.get(configId);
         if (!config) {
             throw new Error(`missing configuration for window ${configId}`);
         }
 
         const state = {
             config,
-            instance: createSceneInstance(config.sceneId),
+            instance: config.type === "scene" ? createSceneInstance(config.sceneId) : null,
             canvas: null,
+            iframe: null,
             viewport: null,
             mounted: false,
             errorElement: null,
-            resizePending: false
+            resizePending: false,
+            mountPromise: null
         };
 
-        sceneStates.set(configId, state);
+        windowStates.set(configId, state);
     }
 
-    return sceneStates.get(configId);
+    return windowStates.get(configId);
 }
 
 function openWindow(windowElement, configId) {
@@ -173,7 +332,13 @@ function openWindow(windowElement, configId) {
             closeWindow(existingActive, activeId);
         }
     }
-    const state = ensureSceneState(configId);
+
+    const config = configIndex.get(configId);
+    if (!config) {
+        return;
+    }
+
+    const state = ensureWindowState(configId);
     const viewport = windowElement.querySelector(".art-window__viewport");
     if (!viewport) {
         return;
@@ -186,7 +351,7 @@ function openWindow(windowElement, configId) {
 
     state.viewport = viewport;
 
-    if (!state.canvas && state.config.useCanvas !== false) {
+    if (config.type === "scene" && !state.canvas && config.useCanvas !== false) {
         state.canvas = document.createElement("canvas");
         state.canvas.className = "art-window__canvas";
         viewport.appendChild(state.canvas);
@@ -199,10 +364,17 @@ function openWindow(windowElement, configId) {
     storeWindowOrigin(windowElement);
     windowElement.classList.add("is-active");
     document.body.classList.add("art-window-active");
-    applyExpandedPlacement(windowElement, state.config);
+    applyExpandedPlacement(windowElement, config);
 
-    const context = { canvas: state.canvas ?? null, container: viewport, config: state.config };
+    if (config.type === "scene") {
+        mountScene(state, windowElement, configId);
+    } else {
+        mountEmbed(state, viewport);
+    }
+}
 
+function mountScene(state, windowElement, configId) {
+    const context = { canvas: state.canvas ?? null, container: state.viewport, config: state.config };
     const mountPromise = Promise.resolve(state.instance.mount(context));
     state.mountPromise = mountPromise;
 
@@ -210,22 +382,57 @@ function openWindow(windowElement, configId) {
         .then(() => {
             if (!windowElement.classList.contains("is-active")) {
                 state.mounted = false;
-                activeScenes.delete(configId);
+                activeSceneStates.delete(configId);
                 state.mountPromise = null;
                 return;
             }
             state.mounted = true;
-            activeScenes.set(configId, state);
+            activeSceneStates.set(configId, state);
             resizeScene(state);
             state.mountPromise = null;
         })
         .catch((error) => {
             console.error(`failed to mount scene ${state.config.sceneId}`, error);
-            showError(viewport, state, "failed to start scene");
+            showError(state.viewport, state, "failed to start scene");
             state.mounted = false;
-            activeScenes.delete(configId);
+            activeSceneStates.delete(configId);
             state.mountPromise = null;
         });
+}
+
+function mountEmbed(state, viewport) {
+    if (!viewport) {
+        return;
+    }
+
+    if (!state.config.embedUrl) {
+        showError(viewport, state, "embed unavailable");
+        return;
+    }
+
+    if (!state.iframe) {
+        const iframe = document.createElement("iframe");
+        iframe.className = "art-window__iframe";
+        iframe.src = state.config.embedUrl;
+        iframe.loading = "lazy";
+        iframe.title = state.config.title || "embedded window";
+        iframe.allowFullscreen = state.config.allowFullscreen !== false;
+        iframe.setAttribute(
+            "allow",
+            state.config.allow || "autoplay; fullscreen; clipboard-write; encrypted-media; picture-in-picture"
+        );
+        iframe.referrerPolicy = state.config.referrerPolicy || "no-referrer";
+        iframe.addEventListener("error", () => {
+            showError(viewport, state, "failed to load embed");
+        });
+        state.iframe = iframe;
+    }
+
+    if (!state.iframe.isConnected) {
+        viewport.appendChild(state.iframe);
+    }
+
+    state.mounted = true;
 }
 
 function closeWindow(windowElement, configId) {
@@ -236,16 +443,26 @@ function closeWindow(windowElement, configId) {
     windowElement.classList.remove("is-active");
     restoreWindowOrigin(windowElement);
 
-    const state = sceneStates.get(configId);
+    const state = windowStates.get(configId);
     if (state && state.mounted) {
-        try {
-            state.instance.unmount?.();
-        } catch (error) {
-            console.error(`failed to unmount scene ${state.config.sceneId}`, error);
+        if (state.config.type === "scene") {
+            try {
+                state.instance.unmount?.();
+            } catch (error) {
+                console.error(`failed to unmount scene ${state.config.sceneId}`, error);
+            }
+            state.mounted = false;
+            activeSceneStates.delete(configId);
+            state.mountPromise = null;
+        } else if (state.config.type === "embed" && state.iframe) {
+            try {
+                state.iframe.src = state.config.embedUrl;
+            } catch {
+                // ignore reset errors
+            }
+            state.iframe.remove();
+            state.mounted = false;
         }
-        state.mounted = false;
-        activeScenes.delete(configId);
-        state.mountPromise = null;
     }
 
     if (state) {
@@ -351,7 +568,7 @@ function handleResize() {
         windowElement.style.top = `${clamped.y}px`;
     });
 
-    activeScenes.forEach((state) => {
+    activeSceneStates.forEach((state) => {
         resizeScene(state);
     });
 }
@@ -465,8 +682,8 @@ function notifySceneResize(windowElement) {
         return;
     }
 
-    const state = sceneStates.get(configId);
-    if (!state || !state.mounted) {
+    const state = windowStates.get(configId);
+    if (!state || !state.mounted || state.config.type !== "scene") {
         return;
     }
 
@@ -577,4 +794,76 @@ function showError(viewport, state, message) {
         state.errorElement.textContent = message;
         state.errorElement.hidden = false;
     }
+}
+
+function revealLayer(layerKey, { immediate = false } = {}) {
+    if (!layerKey) {
+        return;
+    }
+
+    const state = layerRegistry.get(layerKey);
+    if (!state || !state.windows.length) {
+        return;
+    }
+
+    if (state.isAnimating) {
+        return;
+    }
+
+    const hiddenWindows = state.windows.filter((windowEl) => !windowEl.classList.contains("is-visible"));
+    if (!hiddenWindows.length) {
+        return;
+    }
+
+    state.isAnimating = true;
+    const delayUnit = immediate ? 0 : 110;
+
+    state.windows.forEach((windowEl, index) => {
+        const delay = delayUnit * index;
+        windowEl.style.setProperty("--window-transition-delay", `${delay}ms`);
+        setTimeout(() => {
+            windowEl.classList.add("is-visible");
+            if (index === state.windows.length - 1) {
+                finishLayerAnimation(state);
+            }
+        }, delay);
+    });
+}
+
+function dismissLayer(layerKey) {
+    if (!layerKey) {
+        return;
+    }
+
+    const state = layerRegistry.get(layerKey);
+    if (!state || !state.windows.length) {
+        return;
+    }
+
+    if (state.isAnimating) {
+        return;
+    }
+
+    const visibleWindows = state.windows.filter((windowEl) => windowEl.classList.contains("is-visible"));
+    if (!visibleWindows.length) {
+        return;
+    }
+
+    state.isAnimating = true;
+    const reversed = [...state.windows].reverse();
+
+    reversed.forEach((windowEl, index) => {
+        const delay = 90 * index;
+        windowEl.style.setProperty("--window-transition-delay", `${delay}ms`);
+        setTimeout(() => {
+            windowEl.classList.remove("is-visible");
+            if (index === reversed.length - 1) {
+                finishLayerAnimation(state);
+            }
+        }, delay);
+    });
+}
+
+function finishLayerAnimation(state) {
+    state.isAnimating = false;
 }
