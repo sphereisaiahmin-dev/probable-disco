@@ -14,7 +14,7 @@ const windowConfigSets = {
 const layerRegistry = new Map();
 const initialisedLayers = new WeakSet();
 const windowStates = new Map();
-const activeSceneStates = new Map();
+const mountedSceneStates = new Map();
 const embedPreviewCache = new Map();
 const runtimePreviewCache = new Map();
 
@@ -29,6 +29,8 @@ const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
 const WINDOW_EDGE_GUTTER = 24;
 const EMBED_FALLBACK_TIMEOUT = 6000;
+const VIDEO_DEFAULT_RATE = 1;
+const VIDEO_HOVER_RATE = 1.5;
 
 const placementCache = new Map();
 const floatingWindows = new Set();
@@ -232,7 +234,17 @@ function createWindowElement(config) {
     }
     viewport.appendChild(preview);
 
+    const contentHost = document.createElement("div");
+    contentHost.className = "art-window__content";
+    viewport.appendChild(contentHost);
+
     const runtimePreviewApplied = applyRuntimePreview(config, preview);
+
+    const state = ensureWindowState(config.uid);
+    state.viewportHost = viewport;
+    state.viewport = contentHost;
+    state.previewElement = preview;
+    initialiseLivePreview(windowElement, state);
 
     if (config.hint) {
         const hint = document.createElement("span");
@@ -321,6 +333,133 @@ function hydrateEmbedPreview(config, preview) {
         preview.style.backgroundImage = `url(${thumbnailUrl})`;
         preview.classList.add("has-image");
     });
+}
+
+function initialiseLivePreview(windowElement, state) {
+    if (!windowElement || !state || state.previewInitialised) {
+        return;
+    }
+
+    if (!state.viewport && state.viewportHost) {
+        const host = state.viewportHost.querySelector(".art-window__content");
+        state.viewport = host || state.viewportHost;
+    }
+
+    if (state.config.type === "scene") {
+        if (state.config.useCanvas !== false && !state.canvas) {
+            state.canvas = document.createElement("canvas");
+            state.canvas.className = "art-window__canvas";
+            state.viewport?.appendChild(state.canvas);
+        }
+        mountScene(state, windowElement, state.config.uid, { allowInactive: true });
+    } else if (state.config.videoSrc) {
+        attachVideoPreview(windowElement, state);
+    } else if (state.config.type === "embed") {
+        mountEmbed(state);
+    }
+
+    state.previewInitialised = true;
+}
+
+function attachVideoPreview(windowElement, state) {
+    if (!state?.viewport || state.videoElement || !state.config.videoSrc) {
+        return;
+    }
+
+    const video = document.createElement("video");
+    video.className = "art-window__video";
+    video.src = state.config.videoSrc;
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.autoplay = true;
+    video.preload = "auto";
+    video.controls = false;
+    video.playbackRate = VIDEO_DEFAULT_RATE;
+    if (state.config.poster) {
+        video.poster = state.config.poster;
+    }
+
+    video.addEventListener(
+        "loadeddata",
+        () => {
+            ensureVideoPlayback(state);
+            markPreviewLive(state.previewElement);
+        },
+        { once: true }
+    );
+    video.addEventListener("error", () => {
+        showError(state.viewportHost, state, "video unavailable");
+    });
+
+    state.viewport.appendChild(video);
+    state.videoElement = video;
+    setupVideoHoverPlayback(windowElement, state);
+}
+
+function markPreviewLive(preview) {
+    if (!preview) {
+        return;
+    }
+    preview.classList.add("is-live");
+}
+
+function setupVideoHoverPlayback(windowElement, state) {
+    if (!windowElement || !state?.videoElement || state.videoHoverAttached) {
+        return;
+    }
+
+    const video = state.videoElement;
+    const ensurePlay = () => {
+        const result = video.play();
+        if (result?.catch) {
+            result.catch(() => {
+                /* ignore autoplay blocking */
+            });
+        }
+    };
+
+    const handleEnter = () => {
+        video.playbackRate = VIDEO_HOVER_RATE;
+        ensurePlay();
+    };
+
+    const handleLeave = () => {
+        video.playbackRate = VIDEO_DEFAULT_RATE;
+    };
+
+    windowElement.addEventListener("pointerenter", handleEnter);
+    windowElement.addEventListener("pointerleave", handleLeave);
+    ensurePlay();
+
+    video.addEventListener(
+        "play",
+        () => {
+            markPreviewLive(state.previewElement);
+        },
+        { once: true }
+    );
+
+    state.videoHoverCleanup = () => {
+        windowElement.removeEventListener("pointerenter", handleEnter);
+        windowElement.removeEventListener("pointerleave", handleLeave);
+    };
+    state.videoHoverAttached = true;
+}
+
+function ensureVideoPlayback(state) {
+    const video = state?.videoElement;
+    if (!video) {
+        return;
+    }
+
+    video.playbackRate = VIDEO_DEFAULT_RATE;
+    const playPromise = video.play();
+    if (playPromise?.catch) {
+        playPromise.catch(() => {
+            /* autoplay restrictions */
+        });
+    }
 }
 
 function applyRuntimePreview(config, preview) {
@@ -597,12 +736,18 @@ function ensureWindowState(configId) {
             instance: config.type === "scene" ? createSceneInstance(config.sceneId) : null,
             canvas: null,
             iframe: null,
+            videoElement: null,
             viewport: null,
+            viewportHost: null,
             mounted: false,
             errorElement: null,
             resizePending: false,
             mountPromise: null,
-            embedTimeoutId: null
+            embedTimeoutId: null,
+            previewInitialised: false,
+            previewElement: null,
+            videoHoverCleanup: null,
+            videoHoverAttached: false
         };
 
         windowStates.set(configId, state);
@@ -632,17 +777,29 @@ function openWindow(windowElement, configId) {
         return;
     }
 
+    const contentHost = viewport.querySelector(".art-window__content");
+    const previewElement = viewport.querySelector(".art-window__preview");
+    if (!state.viewportHost) {
+        state.viewportHost = viewport;
+    }
+    if (!state.viewport && contentHost) {
+        state.viewport = contentHost;
+    }
+    if (!state.previewElement && previewElement) {
+        state.previewElement = previewElement;
+    }
+
+    initialiseLivePreview(windowElement, state);
+
     const closeButton = windowElement.querySelector(".art-window__control");
     if (closeButton) {
         closeButton.hidden = false;
     }
 
-    state.viewport = viewport;
-
     if (config.type === "scene" && !state.canvas && config.useCanvas !== false) {
         state.canvas = document.createElement("canvas");
         state.canvas.className = "art-window__canvas";
-        viewport.appendChild(state.canvas);
+        state.viewport?.appendChild(state.canvas);
     }
 
     if (state.errorElement) {
@@ -655,40 +812,68 @@ function openWindow(windowElement, configId) {
     applyExpandedPlacement(windowElement, config);
 
     if (config.type === "scene") {
-        mountScene(state, windowElement, configId);
+        if (!state.mounted) {
+            mountScene(state, windowElement, configId);
+        } else {
+            mountedSceneStates.set(configId, state);
+            resizeScene(state);
+        }
+    } else if (config.videoSrc) {
+        ensureVideoPlayback(state);
     } else {
-        mountEmbed(state, viewport);
+        mountEmbed(state);
     }
 }
 
-function mountScene(state, windowElement, configId) {
+function mountScene(state, windowElement, configId, { allowInactive = false } = {}) {
+    if (!state || !state.instance) {
+        return;
+    }
+
+    if (state.mounted) {
+        mountedSceneStates.set(configId, state);
+        markPreviewLive(state.previewElement);
+        return;
+    }
+
+    if (state.mountPromise) {
+        return;
+    }
+
     const context = { canvas: state.canvas ?? null, container: state.viewport, config: state.config };
     const mountPromise = Promise.resolve(state.instance.mount(context));
     state.mountPromise = mountPromise;
 
     mountPromise
         .then(() => {
-            if (!windowElement.classList.contains("is-active")) {
+            if (!allowInactive && !windowElement.classList.contains("is-active")) {
+                try {
+                    state.instance.unmount?.();
+                } catch (error) {
+                    console.error(`failed to unmount inactive scene ${state.config.sceneId}`, error);
+                }
                 state.mounted = false;
-                activeSceneStates.delete(configId);
+                mountedSceneStates.delete(configId);
                 state.mountPromise = null;
                 return;
             }
             state.mounted = true;
-            activeSceneStates.set(configId, state);
+            mountedSceneStates.set(configId, state);
             resizeScene(state);
+            markPreviewLive(state.previewElement);
             state.mountPromise = null;
         })
         .catch((error) => {
             console.error(`failed to mount scene ${state.config.sceneId}`, error);
-            showError(state.viewport, state, "failed to start scene");
+            showError(state.viewportHost, state, "failed to start scene");
             state.mounted = false;
-            activeSceneStates.delete(configId);
+            mountedSceneStates.delete(configId);
             state.mountPromise = null;
         });
 }
 
-function mountEmbed(state, viewport) {
+function mountEmbed(state) {
+    const viewport = state.viewportHost || state.viewport;
     if (!viewport) {
         return;
     }
@@ -723,12 +908,13 @@ function mountEmbed(state, viewport) {
                 clearTimeout(state.embedTimeoutId);
                 state.embedTimeoutId = null;
             }
+            markPreviewLive(state.previewElement);
         });
         state.iframe = iframe;
     }
 
     if (!state.iframe.isConnected) {
-        viewport.appendChild(state.iframe);
+        (state.viewport || viewport).appendChild(state.iframe);
     }
 
     if (state.embedTimeoutId === null) {
@@ -758,26 +944,13 @@ function closeWindow(windowElement, configId) {
     windowElement.classList.remove("is-active");
     restoreWindowOrigin(windowElement);
 
-    if (state && state.mounted) {
-        if (state.config.type === "scene") {
-            try {
-                state.instance.unmount?.();
-            } catch (error) {
-                console.error(`failed to unmount scene ${state.config.sceneId}`, error);
-            }
-            state.mounted = false;
-            activeSceneStates.delete(configId);
-            state.mountPromise = null;
-        } else if (state.config.type === "embed" && state.iframe) {
-            try {
-                state.iframe.src = state.config.embedUrl;
-            } catch {
-                // ignore reset errors
-            }
-            delete state.iframe.dataset.embedLoaded;
-            state.iframe.remove();
-            state.mounted = false;
-        }
+    if (state && state.mounted && state.config.type === "scene") {
+        mountedSceneStates.set(configId, state);
+        resizeScene(state);
+    }
+
+    if (state?.videoElement) {
+        ensureVideoPlayback(state);
     }
 
     if (state) {
@@ -890,7 +1063,7 @@ function handleResize() {
         windowElement.style.top = `${clamped.y}px`;
     });
 
-    activeSceneStates.forEach((state) => {
+    mountedSceneStates.forEach((state) => {
         resizeScene(state);
     });
 }

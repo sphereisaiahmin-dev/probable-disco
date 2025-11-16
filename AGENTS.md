@@ -20,6 +20,23 @@
 - Update this file when expanding the design system or introducing new build steps.
 - Store screenshots or media previews in dedicated directories (e.g., `media/`) to keep the root tidy.
 
+## Netlify deployment notes
+- Production traffic is served by the Netlify Functions wrapper in `netlify/functions/site.js`. It mounts the Express app from
+  `server.js` through `serverless-http`, so any route or middleware changes must continue to export the app instance from
+  `server.js` without side effects.
+- `netlify.toml` orchestrates everything:
+  - `npm run build` (implemented in `serverless-build.js`) prepares the static bundle that the serverless handler reads.
+  - `publish = "."` keeps the repo root as the artifact so relative asset paths remain valid.
+  - All requests (`/*` and `/api/*`) are proxied to `/.netlify/functions/site`, so avoid hardcoding absolute URLs—always use
+    Express routes so the function can answer.
+  - `functions.included_files` lists directories that must ship with each deploy (e.g., `css`, `js`, `server`). If you add new
+    runtime assets, update this array or Netlify will omit them.
+- Keep `express` listed in `external_node_modules`; the serverless bundle relies on Netlify injecting that dependency instead of
+  bundling it, which keeps cold starts down.
+- When testing locally, `npm run dev` mirrors Netlify’s proxy behaviour: it runs `server.js` with `HOST=0.0.0.0` and exposes the
+  same `/api` rewrites defined in `netlify.toml`. Use this command before deploying to verify that middleware, static asset
+  paths, and redirects behave identically to production.
+
 ## Playwright simulation note
 - When running Playwright or any browser-container based interaction tests, temporarily expose the dev server on `0.0.0.0` (e.g. `HOST=0.0.0.0 PORT=4173 node server.js`) so the external automation context can reach it.
 - Remember to restore the host/IP to the default loopback binding once you are done to avoid accidental exposure.
