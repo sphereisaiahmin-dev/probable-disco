@@ -20,11 +20,19 @@ const embedPreviewCache = new Map();
 let zIndexSeed = 10;
 let listenersAttached = false;
 
-const WINDOW_MIN_WIDTH = 240;
-const WINDOW_MIN_HEIGHT = 160;
+const WINDOW_MIN_WIDTH = 180;
+const WINDOW_MIN_HEIGHT = 120;
+const WINDOW_DEFAULT_WIDTH = 220;
+const WINDOW_DEFAULT_HEIGHT = 150;
 const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
-const WINDOW_EDGE_GUTTER = 32;
+const WINDOW_EDGE_GUTTER = 24;
+const EMBED_FALLBACK_TIMEOUT = 6000;
+
+const placementCache = new Map();
+const floatingWindows = new Set();
+const floatingStates = new WeakMap();
+let floatingAnimationFrame = null;
 
 bootstrapLayers();
 
@@ -183,6 +191,7 @@ function createWindowElement(config) {
     const windowElement = document.createElement("article");
     windowElement.className = "art-window";
     windowElement.dataset.windowId = config.uid;
+    windowElement.dataset.windowLayer = config.layerKey;
     applyInitialPlacement(windowElement, config);
     bringToFront(windowElement);
 
@@ -245,6 +254,8 @@ function createWindowElement(config) {
     enableDragging(windowElement, header);
     enableResizing(windowElement, resizeHandle);
 
+    registerFloatingWindow(windowElement);
+
     windowElement.addEventListener("click", () => {
         if (windowElement.classList.contains("is-active")) {
             return;
@@ -306,30 +317,237 @@ function hydrateEmbedPreview(config, preview) {
 }
 
 function applyInitialPlacement(windowElement, config) {
-    const { initialPosition, initialSize } = config;
-    if (initialPosition) {
-        windowElement.style.left = `${initialPosition.x}px`;
-        windowElement.style.top = `${initialPosition.y}px`;
-    } else {
-        const padding = 48;
-        windowElement.style.left = `${padding + Math.random() * (window.innerWidth - padding * 2)}px`;
-        windowElement.style.top = `${padding + Math.random() * (window.innerHeight - padding * 2)}px`;
-    }
+    const size = getInitialWindowSize(config);
+    windowElement.style.width = `${size.width}px`;
+    windowElement.style.height = `${size.height}px`;
 
-    if (initialSize) {
-        const width = Math.max(initialSize.width, WINDOW_MIN_WIDTH);
-        const height = Math.max(initialSize.height, WINDOW_MIN_HEIGHT);
-        windowElement.style.width = `${width}px`;
-        windowElement.style.height = `${height}px`;
-    } else {
-        windowElement.style.width = `${WINDOW_MIN_WIDTH}px`;
-        windowElement.style.height = `${WINDOW_MIN_HEIGHT}px`;
-    }
+    const position = getInitialWindowPosition(config, size);
+    windowElement.style.left = `${position.x}px`;
+    windowElement.style.top = `${position.y}px`;
 }
 
 function bringToFront(windowElement) {
     zIndexSeed += 1;
     windowElement.style.zIndex = zIndexSeed.toString();
+}
+
+function getInitialWindowSize(config) {
+    const { initialSize } = config;
+    const preferredWidth = initialSize?.width ?? WINDOW_DEFAULT_WIDTH;
+    const preferredHeight = initialSize?.height ?? WINDOW_DEFAULT_HEIGHT;
+    const maxWidth = Math.max(window.innerWidth - WINDOW_EDGE_GUTTER * 2, WINDOW_MIN_WIDTH);
+    const maxHeight = Math.max(window.innerHeight - WINDOW_EDGE_GUTTER * 3, WINDOW_MIN_HEIGHT);
+
+    return {
+        width: clamp(preferredWidth, WINDOW_MIN_WIDTH, maxWidth),
+        height: clamp(preferredHeight, WINDOW_MIN_HEIGHT, maxHeight)
+    };
+}
+
+function getInitialWindowPosition(config, size) {
+    const layerKey = config.layerKey || "art";
+    const state = ensurePlacementState(layerKey);
+    const bounds = state.bounds;
+    const { initialPosition } = config;
+    if (initialPosition) {
+        const hinted = clampToBounds(initialPosition, size, bounds);
+        if (!hasCollision(hinted, size, state.occupied)) {
+            state.occupied.push({ ...hinted, width: size.width, height: size.height });
+            return hinted;
+        }
+    }
+
+    return findPlacementSlot(state, size);
+}
+
+function ensurePlacementState(layerKey) {
+    const signature = getPlacementSignature();
+    const totalWindows = windowConfigSets[layerKey]?.length ?? 0;
+    let state = placementCache.get(layerKey);
+
+    if (!state || state.signature !== signature || state.expectedWindows !== totalWindows) {
+        const bounds = getCanvasBounds();
+        state = {
+            signature,
+            expectedWindows: totalWindows,
+            bounds,
+            positions: generatePlacementPositions(totalWindows, bounds),
+            occupied: [],
+            cursor: 0
+        };
+        placementCache.set(layerKey, state);
+    }
+
+    return state;
+}
+
+function getPlacementSignature() {
+    const headerOffset = Math.round(getHeaderOffset());
+    return `${window.innerWidth}x${window.innerHeight}x${headerOffset}`;
+}
+
+function getCanvasBounds() {
+    const gutter = WINDOW_EDGE_GUTTER;
+    const headerOffset = getHeaderOffset();
+    const top = Math.max(headerOffset + gutter, gutter);
+    const left = gutter;
+    const width = Math.max(window.innerWidth - gutter * 2, WINDOW_MIN_WIDTH);
+    const height = Math.max(window.innerHeight - top - gutter - getAudioPlayerClearance(false), WINDOW_MIN_HEIGHT);
+    return { left, top, width, height };
+}
+
+function getHeaderOffset() {
+    const header = document.querySelector(".site-header");
+    if (!header) {
+        return 0;
+    }
+    const rect = header.getBoundingClientRect();
+    return rect?.bottom ?? header.offsetHeight ?? 0;
+}
+
+function generatePlacementPositions(total, bounds) {
+    if (!total) {
+        return [];
+    }
+
+    const safeWidth = WINDOW_DEFAULT_WIDTH + WINDOW_EDGE_GUTTER;
+    const columns = Math.max(1, Math.floor(bounds.width / safeWidth));
+    const rows = Math.max(1, Math.ceil(total / columns));
+    const columnWidth = bounds.width / columns;
+    const rowHeight = bounds.height / rows;
+    const positions = [];
+
+    for (let index = 0; index < total; index += 1) {
+        const row = Math.floor(index / columns);
+        const column = index % columns;
+        const jitterX = ((index % 3) - 1) * 4;
+        const jitterY = ((index % 2) - 0.5) * 6;
+        const x = bounds.left + column * columnWidth + (columnWidth - WINDOW_DEFAULT_WIDTH) / 2 + jitterX;
+        const y = bounds.top + row * rowHeight + (rowHeight - WINDOW_DEFAULT_HEIGHT) / 2 + jitterY;
+        positions.push({ x, y });
+    }
+
+    return positions;
+}
+
+function findPlacementSlot(state, size) {
+    const { positions, occupied, bounds } = state;
+    for (let offset = 0; offset < positions.length; offset += 1) {
+        const index = (state.cursor + offset) % positions.length;
+        const candidate = clampToBounds(positions[index], size, bounds);
+        if (!hasCollision(candidate, size, occupied)) {
+            state.cursor = (index + 1) % positions.length;
+            const rect = { ...candidate, width: size.width, height: size.height };
+            occupied.push(rect);
+            return candidate;
+        }
+    }
+
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+        const randomCandidate = clampToBounds(
+            {
+                x: bounds.left + Math.random() * Math.max(bounds.width - size.width, 1),
+                y: bounds.top + Math.random() * Math.max(bounds.height - size.height, 1)
+            },
+            size,
+            bounds
+        );
+        if (!hasCollision(randomCandidate, size, occupied)) {
+            const rect = { ...randomCandidate, width: size.width, height: size.height };
+            occupied.push(rect);
+            return randomCandidate;
+        }
+    }
+
+    return clampToBounds({ x: bounds.left, y: bounds.top }, size, bounds);
+}
+
+function clampToBounds(position, size, bounds) {
+    const maxX = bounds.left + Math.max(bounds.width - size.width, 0);
+    const maxY = bounds.top + Math.max(bounds.height - size.height, 0);
+    return {
+        x: clamp(position.x, bounds.left, maxX),
+        y: clamp(position.y, bounds.top, maxY)
+    };
+}
+
+function hasCollision(position, size, occupied) {
+    const buffer = 12;
+    const left = position.x - buffer;
+    const top = position.y - buffer;
+    const right = position.x + size.width + buffer;
+    const bottom = position.y + size.height + buffer;
+
+    return occupied.some((rect) => {
+        const rectLeft = rect.x - buffer;
+        const rectTop = rect.y - buffer;
+        const rectRight = rect.x + rect.width + buffer;
+        const rectBottom = rect.y + rect.height + buffer;
+        return left < rectRight && right > rectLeft && top < rectBottom && bottom > rectTop;
+    });
+}
+
+function registerFloatingWindow(windowElement) {
+    if (floatingWindows.has(windowElement)) {
+        return;
+    }
+
+    if (!windowElement.isConnected) {
+        requestAnimationFrame(() => {
+            registerFloatingWindow(windowElement);
+        });
+        return;
+    }
+
+    floatingWindows.add(windowElement);
+    floatingStates.set(windowElement, {
+        amplitudeX: 3 + Math.random() * 6,
+        amplitudeY: 2 + Math.random() * 5,
+        speed: 0.00035 + Math.random() * 0.00025,
+        phase: Math.random() * Math.PI * 2
+    });
+    ensureFloatingAnimation();
+}
+
+function ensureFloatingAnimation() {
+    if (floatingAnimationFrame !== null) {
+        return;
+    }
+
+    const update = (timestamp) => {
+        floatingWindows.forEach((windowElement) => {
+            if (!windowElement.isConnected) {
+                floatingWindows.delete(windowElement);
+                floatingStates.delete(windowElement);
+                return;
+            }
+
+            const state = floatingStates.get(windowElement);
+            if (!state) {
+                return;
+            }
+
+            const shouldPause =
+                windowElement.classList.contains("is-active") ||
+                windowElement.dataset.dragging === "1" ||
+                windowElement.dataset.resizing === "1";
+
+            if (shouldPause) {
+                windowElement.style.setProperty("--window-float-x", "0px");
+                windowElement.style.setProperty("--window-float-y", "0px");
+                return;
+            }
+
+            const offsetX = Math.sin(timestamp * state.speed + state.phase) * state.amplitudeX;
+            const offsetY = Math.cos(timestamp * state.speed * 1.18 + state.phase) * state.amplitudeY;
+            windowElement.style.setProperty("--window-float-x", `${offsetX.toFixed(2)}px`);
+            windowElement.style.setProperty("--window-float-y", `${offsetY.toFixed(2)}px`);
+        });
+
+        floatingAnimationFrame = requestAnimationFrame(update);
+    };
+
+    floatingAnimationFrame = requestAnimationFrame(update);
 }
 
 function ensureWindowState(configId) {
@@ -348,7 +566,8 @@ function ensureWindowState(configId) {
             mounted: false,
             errorElement: null,
             resizePending: false,
-            mountPromise: null
+            mountPromise: null,
+            embedTimeoutId: null
         };
 
         windowStates.set(configId, state);
@@ -453,17 +672,39 @@ function mountEmbed(state, viewport) {
         iframe.allowFullscreen = state.config.allowFullscreen !== false;
         iframe.setAttribute(
             "allow",
-            state.config.allow || "autoplay; fullscreen; clipboard-write; encrypted-media; picture-in-picture"
+            state.config.allow ||
+                "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         );
-        iframe.referrerPolicy = state.config.referrerPolicy || "no-referrer";
+        iframe.referrerPolicy = state.config.referrerPolicy || "strict-origin-when-cross-origin";
         iframe.addEventListener("error", () => {
             showError(viewport, state, "failed to load embed");
+        });
+        iframe.addEventListener("load", () => {
+            iframe.dataset.embedLoaded = "1";
+            if (state.errorElement) {
+                state.errorElement.hidden = true;
+            }
+            if (state.embedTimeoutId !== null) {
+                clearTimeout(state.embedTimeoutId);
+                state.embedTimeoutId = null;
+            }
         });
         state.iframe = iframe;
     }
 
     if (!state.iframe.isConnected) {
         viewport.appendChild(state.iframe);
+    }
+
+    if (state.embedTimeoutId === null) {
+        state.embedTimeoutId = window.setTimeout(() => {
+            state.embedTimeoutId = null;
+            if (!state.iframe || state.iframe.dataset.embedLoaded === "1") {
+                return;
+            }
+            const fallbackMessage = state.config.embedErrorMessage || "embed blocked — open in a new tab";
+            showError(viewport, state, fallbackMessage);
+        }, EMBED_FALLBACK_TIMEOUT);
     }
 
     state.mounted = true;
@@ -494,6 +735,7 @@ function closeWindow(windowElement, configId) {
             } catch {
                 // ignore reset errors
             }
+            delete state.iframe.dataset.embedLoaded;
             state.iframe.remove();
             state.mounted = false;
         }
@@ -501,6 +743,10 @@ function closeWindow(windowElement, configId) {
 
     if (state) {
         state.resizePending = false;
+        if (state.embedTimeoutId !== null) {
+            clearTimeout(state.embedTimeoutId);
+            state.embedTimeoutId = null;
+        }
     }
 
     const viewport = windowElement.querySelector(".art-window__viewport");
@@ -531,53 +777,19 @@ function restoreWindowOrigin(windowElement) {
 }
 
 function applyExpandedPlacement(windowElement, config) {
-    const { width, height } = getExpandedSize(windowElement, config);
+    const headerOffset = getHeaderOffset();
+    const bottomClearance = getAudioPlayerClearance(false);
+    const width = window.innerWidth;
+    const height = Math.max(window.innerHeight - headerOffset - bottomClearance, ACTIVE_MIN_HEIGHT);
+    const top = headerOffset;
+
+    windowElement.style.left = "0px";
+    windowElement.style.top = `${top}px`;
     windowElement.style.width = `${width}px`;
     windowElement.style.height = `${height}px`;
 
-    const centered = getCenteredPosition(width, height);
-    windowElement.style.left = `${centered.x}px`;
-    windowElement.style.top = `${centered.y}px`;
-
-    const clamped = clampPosition(windowElement, centered.x, centered.y);
-    windowElement.style.left = `${clamped.x}px`;
-    windowElement.style.top = `${clamped.y}px`;
-
     windowElement.dataset.expandedWidth = Math.round(width).toString();
     windowElement.dataset.expandedHeight = Math.round(height).toString();
-}
-
-function getExpandedSize(windowElement, config) {
-    const storedWidth = Number.parseFloat(windowElement.dataset.expandedWidth ?? "");
-    const storedHeight = Number.parseFloat(windowElement.dataset.expandedHeight ?? "");
-    const baseWidth = Math.max(config?.initialSize?.width ?? WINDOW_MIN_WIDTH, ACTIVE_MIN_WIDTH);
-    const baseHeight = Math.max(config?.initialSize?.height ?? WINDOW_MIN_HEIGHT, ACTIVE_MIN_HEIGHT);
-    const preferredWidth = Number.isFinite(storedWidth) ? storedWidth : baseWidth;
-    const preferredHeight = Number.isFinite(storedHeight) ? storedHeight : baseHeight;
-    const availableWidth = Math.max(window.innerWidth - WINDOW_EDGE_GUTTER * 2, WINDOW_MIN_WIDTH);
-    const availableHeight = Math.max(window.innerHeight - getAudioPlayerClearance(), WINDOW_MIN_HEIGHT);
-    const minWidth = Math.max(Math.min(ACTIVE_MIN_WIDTH, availableWidth), WINDOW_MIN_WIDTH);
-    const minHeight = Math.max(Math.min(ACTIVE_MIN_HEIGHT, availableHeight), WINDOW_MIN_HEIGHT);
-
-    return {
-        width: clamp(preferredWidth, minWidth, availableWidth),
-        height: clamp(preferredHeight, minHeight, availableHeight)
-    };
-}
-
-function getCenteredPosition(width, height) {
-    const gutter = WINDOW_EDGE_GUTTER;
-    const clearance = getAudioPlayerClearance();
-    const maxX = Math.max(window.innerWidth - width - gutter, gutter);
-    const maxY = Math.max(window.innerHeight - height - clearance, gutter);
-    const centerX = (window.innerWidth - width) / 2;
-    const verticalSpace = window.innerHeight - clearance;
-    const centerY = (verticalSpace - height) / 2;
-
-    return {
-        x: clamp(centerX, gutter, maxX),
-        y: clamp(centerY, gutter, maxY)
-    };
 }
 
 function resizeScene(state) {
@@ -591,6 +803,15 @@ function resizeScene(state) {
 
 function handleResize() {
     document.querySelectorAll(".art-window").forEach((windowElement) => {
+        if (windowElement.classList.contains("is-active")) {
+            const configId = windowElement.dataset.windowId;
+            const config = configId ? configIndex.get(configId) : null;
+            if (config) {
+                applyExpandedPlacement(windowElement, config);
+            }
+            return;
+        }
+
         const left = parseFloat(windowElement.style.left ?? "");
         const top = parseFloat(windowElement.style.top ?? "");
         if (Number.isNaN(left) || Number.isNaN(top)) {
@@ -641,6 +862,8 @@ function enableDragging(windowElement, handle) {
         offsetX = event.clientX - windowElement.getBoundingClientRect().left;
         offsetY = event.clientY - windowElement.getBoundingClientRect().top;
         hasMoved = false;
+        windowElement.dataset.dragging = "1";
+        windowElement.classList.add("is-interacting");
         handle.setPointerCapture(pointerId);
     });
 
@@ -664,6 +887,10 @@ function enableDragging(windowElement, handle) {
 
         handle.releasePointerCapture(pointerId);
         pointerId = null;
+        delete windowElement.dataset.dragging;
+        if (windowElement.dataset.resizing !== "1") {
+            windowElement.classList.remove("is-interacting");
+        }
 
         if (hasMoved) {
             windowElement.dataset.dragWasActive = "1";
@@ -683,12 +910,21 @@ function clamp(value, min, max) {
 
 function clampPosition(windowElement, x, y) {
     const rect = windowElement.getBoundingClientRect();
+    if (windowElement.classList.contains("is-active")) {
+        const headerOffset = getHeaderOffset();
+        const clearance = getAudioPlayerClearance(false);
+        const maxX = Math.max(window.innerWidth - rect.width, 0);
+        const maxY = Math.max(window.innerHeight - rect.height - clearance, headerOffset);
+        return {
+            x: clamp(x, 0, maxX),
+            y: clamp(y, headerOffset, maxY)
+        };
+    }
+
     const gutter = WINDOW_EDGE_GUTTER;
-    const clearance = windowElement.classList.contains("is-active")
-        ? Math.max(getAudioPlayerClearance(), gutter * 2)
-        : gutter;
+    const bottomClearance = Math.max(getAudioPlayerClearance(), gutter * 2);
     const maxX = Math.max(window.innerWidth - rect.width - gutter, gutter);
-    const maxY = Math.max(window.innerHeight - rect.height - clearance, gutter);
+    const maxY = Math.max(window.innerHeight - rect.height - bottomClearance, gutter);
 
     return {
         x: clamp(x, gutter, maxX),
@@ -696,18 +932,19 @@ function clampPosition(windowElement, x, y) {
     };
 }
 
-function getAudioPlayerClearance() {
+function getAudioPlayerClearance(includeFallback = true) {
     const player = document.querySelector(".audio-player");
     if (!player) {
-        return WINDOW_EDGE_GUTTER * 2;
+        return includeFallback ? WINDOW_EDGE_GUTTER * 2 : 0;
     }
 
     const { height } = player.getBoundingClientRect();
     if (!height) {
-        return WINDOW_EDGE_GUTTER * 2;
+        return includeFallback ? WINDOW_EDGE_GUTTER * 2 : 0;
     }
 
-    return Math.max(height + WINDOW_EDGE_GUTTER, WINDOW_EDGE_GUTTER * 2);
+    const measured = height + WINDOW_EDGE_GUTTER;
+    return includeFallback ? Math.max(measured, WINDOW_EDGE_GUTTER * 2) : measured;
 }
 
 function notifySceneResize(windowElement) {
@@ -754,6 +991,8 @@ function enableResizing(windowElement, handle) {
         event.stopPropagation();
         bringToFront(windowElement);
         handle.setPointerCapture(pointerId);
+        windowElement.dataset.resizing = "1";
+        windowElement.classList.add("is-interacting");
     });
 
     handle.addEventListener("pointermove", (event) => {
@@ -766,7 +1005,7 @@ function enableResizing(windowElement, handle) {
         const isActive = windowElement.classList.contains("is-active");
         const minWidth = isActive ? ACTIVE_MIN_WIDTH : WINDOW_MIN_WIDTH;
         const minHeight = isActive ? ACTIVE_MIN_HEIGHT : WINDOW_MIN_HEIGHT;
-        const clearance = isActive ? getAudioPlayerClearance() : WINDOW_EDGE_GUTTER * 2;
+        const clearance = isActive ? getAudioPlayerClearance(false) : WINDOW_EDGE_GUTTER * 2;
         const availableWidth = Math.max(window.innerWidth - WINDOW_EDGE_GUTTER * 2, WINDOW_MIN_WIDTH);
         const availableHeight = Math.max(window.innerHeight - clearance, WINDOW_MIN_HEIGHT);
         const widthLowerBound = Math.min(Math.max(minWidth, WINDOW_MIN_WIDTH), availableWidth);
@@ -795,6 +1034,10 @@ function enableResizing(windowElement, handle) {
 
         handle.releasePointerCapture(pointerId);
         pointerId = null;
+        delete windowElement.dataset.resizing;
+        if (windowElement.dataset.dragging !== "1") {
+            windowElement.classList.remove("is-interacting");
+        }
         windowElement.dataset.resizeWasActive = "1";
         requestAnimationFrame(() => {
             delete windowElement.dataset.resizeWasActive;

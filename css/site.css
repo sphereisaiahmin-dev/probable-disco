@@ -464,11 +464,6 @@ canvas {
     outline-offset: 4px;
 }
 
-body.art-window-active .site-header {
-    opacity: 0;
-    pointer-events: none;
-}
-
 .landing {
     position: relative;
     z-index: 1;
@@ -658,13 +653,16 @@ html[data-page="music"] [data-background-canvas] {
 }
 
 .art-window {
+    --window-float-x: 0px;
+    --window-float-y: 0px;
+    --window-reveal-offset: 1.25rem;
     position: absolute;
     top: 0;
     left: 0;
-    width: 280px;
-    height: 180px;
-    min-width: 240px;
-    min-height: 160px;
+    width: 220px;
+    height: 150px;
+    min-width: 180px;
+    min-height: 120px;
     display: grid;
     grid-template-rows: auto 1fr;
     border: 1px solid var(--accent-color);
@@ -678,14 +676,14 @@ html[data-page="music"] [data-background-canvas] {
         opacity 0.5s ease;
     overflow: hidden;
     opacity: 0;
-    transform: translate3d(0, 1.25rem, 0);
+    transform: translate3d(var(--window-float-x), calc(var(--window-reveal-offset) + var(--window-float-y)), 0);
     will-change: transform, opacity;
     transition-delay: var(--window-transition-delay, 0ms);
 }
 
 .art-window.is-visible {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    --window-reveal-offset: 0px;
 }
 
 .art-window:focus-within,
@@ -700,10 +698,22 @@ html[data-page="music"] [data-background-canvas] {
     grid-template-rows: auto 1fr;
     z-index: 9;
     cursor: default;
-    min-width: clamp(420px, 60vw, 880px);
-    min-height: clamp(320px, 58vh, 720px);
-    max-width: calc(100vw - var(--art-window-gutter) * 2);
-    max-height: calc(100vh - (var(--art-window-gutter) + var(--audio-player-clearance)));
+    left: 0;
+    right: 0;
+    width: 100vw;
+    min-width: 100vw;
+    max-width: none;
+    min-height: auto;
+    max-height: none;
+    border-color: transparent;
+    box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    --window-float-x: 0px;
+    --window-float-y: 0px;
+}
+
+.art-window.is-interacting {
+    --window-float-x: 0px;
+    --window-float-y: 0px;
 }
 
 .art-window.is-active .art-window__viewport {
@@ -838,6 +848,11 @@ html[data-page="music"] [data-background-canvas] {
     background: rgba(0, 0, 0, 0.45);
     border-radius: 0.75rem;
     overflow: hidden;
+}
+
+.art-window.is-active .art-window__iframe,
+.art-window.is-active .art-window__canvas {
+    border-radius: 0;
 }
 
 .art-scene-panel {
