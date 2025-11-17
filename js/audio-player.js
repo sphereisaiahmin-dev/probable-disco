@@ -411,6 +411,9 @@
         let toneHighPass = null;
         let toneAnalyser = null;
         let isToneGraphReady = false;
+        let sharedAnalyserNode = null;
+        let sharedAnalyserSource = null;
+        const analyserReadyListeners = new Set();
         let dataArray = null;
         let animationFrameId = null;
         let isVisualizerRunning = false;
@@ -625,6 +628,7 @@
                 toneLowPass.connect(toneHighPass);
                 toneHighPass.connect(toneAnalyser);
                 toneHighPass.connect(toneLibrary.Destination);
+                ensureSharedAnalyserTap(toneHighPass);
 
                 applyFilterValue(filterSlider.value);
 
@@ -690,6 +694,7 @@
             nativeLowPass.connect(nativeHighPass);
             nativeHighPass.connect(analyser);
             analyser.connect(audioContext.destination);
+            ensureSharedAnalyserTap(nativeHighPass);
 
             applyFilterValue(filterSlider.value);
 
@@ -702,6 +707,99 @@
             }
 
             ensureNativeGraph();
+        }
+
+        function ensureSharedAnalyserTap(sourceNode) {
+            if (!sourceNode || !audioContext) {
+                return;
+            }
+
+            const requiresNewAnalyser = !sharedAnalyserNode || sharedAnalyserNode.context !== audioContext;
+            if (requiresNewAnalyser) {
+                if (sharedAnalyserNode && sharedAnalyserSource && typeof sharedAnalyserSource.disconnect === "function") {
+                    try {
+                        sharedAnalyserSource.disconnect(sharedAnalyserNode);
+                    } catch (error) {
+                        console.warn("audio player: failed to reset shared analyser", error);
+                    }
+                }
+
+                sharedAnalyserNode = audioContext.createAnalyser();
+                sharedAnalyserNode.fftSize = 2048;
+                sharedAnalyserNode.smoothingTimeConstant = 0.75;
+                sharedAnalyserSource = null;
+            }
+
+            if (sharedAnalyserSource === sourceNode) {
+                notifyAnalyserListeners();
+                return;
+            }
+
+            if (sharedAnalyserSource && typeof sharedAnalyserSource.disconnect === "function") {
+                try {
+                    sharedAnalyserSource.disconnect(sharedAnalyserNode);
+                } catch (error) {
+                    console.warn("audio player: failed to disconnect shared analyser source", error);
+                }
+            }
+
+            sharedAnalyserSource = sourceNode;
+
+            if (typeof sourceNode.connect === "function") {
+                try {
+                    sourceNode.connect(sharedAnalyserNode);
+                } catch (error) {
+                    console.warn("audio player: failed to connect shared analyser", error);
+                }
+            }
+
+            notifyAnalyserListeners();
+        }
+
+        function notifyAnalyserListeners() {
+            if (!sharedAnalyserNode || !audioContext) {
+                return;
+            }
+
+            analyserReadyListeners.forEach((listener) => {
+                try {
+                    listener({ analyserNode: sharedAnalyserNode, audioContext });
+                } catch (error) {
+                    console.error("audio player: analyser listener failed", error);
+                }
+            });
+        }
+
+        function subscribeToAnalyser(callback) {
+            if (typeof callback !== "function") {
+                return () => {};
+            }
+
+            analyserReadyListeners.add(callback);
+
+            if (sharedAnalyserNode && audioContext) {
+                try {
+                    callback({ analyserNode: sharedAnalyserNode, audioContext });
+                } catch (error) {
+                    console.error("audio player: analyser listener failed", error);
+                }
+            }
+
+            return () => {
+                analyserReadyListeners.delete(callback);
+            };
+        }
+
+        function dispatchAudioControllerReady(controller) {
+            try {
+                document.dispatchEvent(
+                    new CustomEvent("saintjustus:audiocontrollerready", {
+                        detail: { controller }
+                    })
+                );
+            } catch (error) {
+                console.error("audio player: failed to announce controller readiness", error);
+            }
         }
 
         function renderVisualizer() {
@@ -1047,15 +1145,26 @@
             updatePlayButton();
         }
 
-        window.__saintjustusAudioController = {
+        const controller = {
             ready: true,
             hydrate(meta = {}) {
                 if (meta?.pageId) {
                     footer.dataset.pageContext = meta.pageId;
                 }
+            },
+            getAnalyserNode() {
+                return sharedAnalyserNode;
+            },
+            getAudioContext() {
+                return audioContext;
+            },
+            onAnalyserReady(callback) {
+                return subscribeToAnalyser(callback);
             }
         };
 
-        window.__saintjustusAudioController.hydrate({ pageId: document.documentElement?.dataset?.page });
+        window.__saintjustusAudioController = controller;
+        controller.hydrate({ pageId: document.documentElement?.dataset?.page });
+        dispatchAudioControllerReady(controller);
     });
 })();
