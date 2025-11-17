@@ -316,9 +316,15 @@
         const mobileToggleButton = document.createElement("button");
         mobileToggleButton.type = "button";
         mobileToggleButton.className = "audio-player__control audio-player__mobile-toggle";
-        mobileToggleButton.textContent = "more controls";
         mobileToggleButton.setAttribute("aria-label", "show rate and filter controls");
         mobileToggleButton.setAttribute("aria-expanded", "false");
+
+        const mobileToggleIcon = document.createElement("span");
+        mobileToggleIcon.className = "audio-player__mobile-toggle-icon";
+        mobileToggleIcon.setAttribute("aria-hidden", "true");
+        mobileToggleIcon.textContent = "⌄";
+
+        mobileToggleButton.appendChild(mobileToggleIcon);
 
         transport.append(dspModule, controls, mobileToggleButton);
 
@@ -364,7 +370,7 @@
             mobileDspExpanded = Boolean(expanded);
             footer.classList.toggle("audio-player--mobile-dsp", mobileDspExpanded);
             mobileToggleButton.setAttribute("aria-expanded", mobileDspExpanded ? "true" : "false");
-            mobileToggleButton.textContent = mobileDspExpanded ? "player controls" : "more controls";
+            mobileToggleIcon.textContent = mobileDspExpanded ? "⌃" : "⌄";
             mobileToggleButton.setAttribute(
                 "aria-label",
                 mobileDspExpanded ? "show playback controls" : "show rate and filter controls"
