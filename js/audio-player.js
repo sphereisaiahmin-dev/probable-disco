@@ -287,26 +287,56 @@
             return { group, input, valueDisplay };
         }
 
+        function createMobileDspSlider(labelText, role, { min, max, step, value, ariaLabel }) {
+            const wrapper = document.createElement("div");
+            wrapper.className = `audio-player__mobile-slider audio-player__mobile-slider--${role}`;
+
+            const label = document.createElement("span");
+            label.className = "audio-player__mobile-slider-label";
+            label.setAttribute("aria-hidden", "true");
+            label.textContent = labelText;
+
+            const input = document.createElement("input");
+            input.type = "range";
+            input.className = "audio-player__slider audio-player__slider--mobile";
+            input.min = min;
+            input.max = max;
+            input.step = step;
+            input.value = value;
+            input.setAttribute("aria-label", ariaLabel);
+            input.dataset.role = `${role}-mobile`;
+
+            wrapper.append(label, input);
+
+            return { wrapper, input };
+        }
+
         const dspModule = document.createElement("div");
         dspModule.className = "audio-player__dsp";
         dspModule.setAttribute("role", "group");
         dspModule.setAttribute("aria-label", "audio shaping controls");
 
-        const rateControl = createDspControl("rate", "rate", {
+        const rateControlConfig = {
             min: "0.5",
             max: "1.5",
             step: "0.01",
             value: "1",
             ariaLabel: "adjust playback speed and pitch"
-        });
+        };
 
-        const filterControl = createDspControl("filter", "filter", {
+        const filterControlConfig = {
             min: "-1",
             max: "1",
             step: "0.01",
             value: "0",
             ariaLabel: "sweep between low pass and high pass"
-        });
+        };
+
+        const rateControl = createDspControl("rate", "rate", rateControlConfig);
+        const filterControl = createDspControl("filter", "filter", filterControlConfig);
+
+        const mobileRateControl = createMobileDspSlider("rate", "rate", rateControlConfig);
+        const mobileFilterControl = createMobileDspSlider("filter", "filter", filterControlConfig);
 
         dspModule.append(rateControl.group, filterControl.group);
 
@@ -326,7 +356,11 @@
 
         mobileToggleButton.appendChild(mobileToggleIcon);
 
-        transport.append(dspModule, controls, mobileToggleButton);
+        const mobileDspPanel = document.createElement("div");
+        mobileDspPanel.className = "audio-player__mobile-dsp-panel";
+        mobileDspPanel.append(mobileRateControl.wrapper, mobileToggleButton, mobileFilterControl.wrapper);
+
+        transport.append(dspModule, controls, mobileDspPanel);
 
         footer.append(timeline, transport);
 
@@ -344,25 +378,18 @@
                 if (!mobileControlsSlot.contains(controls)) {
                     mobileControlsSlot.appendChild(controls);
                 }
-                if (!mobileControlsSlot.contains(mobileToggleButton)) {
-                    mobileControlsSlot.appendChild(mobileToggleButton);
+                if (!mobileControlsSlot.contains(mobileDspPanel)) {
+                    mobileControlsSlot.appendChild(mobileDspPanel);
                 }
             } else {
                 if (!transport.contains(controls)) {
-                    transport.insertBefore(controls, mobileToggleButton);
+                    transport.insertBefore(controls, mobileDspPanel);
                 }
-                if (!transport.contains(mobileToggleButton)) {
-                    transport.appendChild(mobileToggleButton);
+                if (!transport.contains(mobileDspPanel)) {
+                    transport.appendChild(mobileDspPanel);
                 }
             }
         };
-
-        relocateControlsForMobile();
-        if (typeof mobileMediaQuery.addEventListener === "function") {
-            mobileMediaQuery.addEventListener("change", relocateControlsForMobile);
-        } else if (typeof mobileMediaQuery.addListener === "function") {
-            mobileMediaQuery.addListener(relocateControlsForMobile);
-        }
 
         let mobileDspExpanded = false;
 
@@ -378,6 +405,20 @@
         };
 
         setMobileDspExpanded(false);
+
+        const handleMobileMediaChange = (event) => {
+            if (!event.matches) {
+                setMobileDspExpanded(false);
+            }
+            relocateControlsForMobile();
+        };
+
+        relocateControlsForMobile();
+        if (typeof mobileMediaQuery.addEventListener === "function") {
+            mobileMediaQuery.addEventListener("change", handleMobileMediaChange);
+        } else if (typeof mobileMediaQuery.addListener === "function") {
+            mobileMediaQuery.addListener(handleMobileMediaChange);
+        }
 
         mobileToggleButton.addEventListener("click", () => {
             setMobileDspExpanded(!mobileDspExpanded);
@@ -402,7 +443,9 @@
             dspModule,
             rateControl,
             filterControl,
-            transport
+            transport,
+            mobileRateControl: mobileRateControl.input,
+            mobileFilterControl: mobileFilterControl.input
         };
     }
 
@@ -426,13 +469,17 @@
             dspModule,
             rateControl,
             filterControl,
-            transport
+            transport,
+            mobileRateControl,
+            mobileFilterControl
         } = createPlayerShell();
 
         const rateSlider = rateControl.input;
         const rateValue = rateControl.valueDisplay;
         const filterSlider = filterControl.input;
         const filterValue = filterControl.valueDisplay;
+        const mobileRateSlider = mobileRateControl;
+        const mobileFilterSlider = mobileFilterControl;
 
         const RATE_DEFAULT = 1;
         const FILTER_DEFAULT = 0;
@@ -457,10 +504,12 @@
 
         function resetDspParameters() {
             rateSlider.value = String(RATE_DEFAULT);
+            mobileRateSlider.value = String(RATE_DEFAULT);
             const appliedRate = setPlaybackRate(RATE_DEFAULT);
             updateRateDisplay(appliedRate);
 
             filterSlider.value = String(FILTER_DEFAULT);
+            mobileFilterSlider.value = String(FILTER_DEFAULT);
             applyFilterValue(FILTER_DEFAULT);
         }
 
@@ -967,24 +1016,54 @@
 
         resetDspParameters();
 
-        rateSlider.addEventListener("input", (event) => {
-            const rate = Number(event.target.value);
+        const handleRateInput = (value, source) => {
+            const rate = Number(value);
             if (Number.isNaN(rate) || rate <= 0) {
                 return;
             }
 
             const appliedRate = setPlaybackRate(rate);
             updateRateDisplay(appliedRate);
-        });
+            const normalized = String(appliedRate);
+            if (source !== "desktop") {
+                rateSlider.value = normalized;
+            }
+            if (source !== "mobile") {
+                mobileRateSlider.value = normalized;
+            }
+        };
 
-        filterSlider.addEventListener("input", (event) => {
-            const value = Number(event.target.value);
-            if (Number.isNaN(value)) {
+        const handleFilterInput = (value, source) => {
+            const numericValue = Number(value);
+            if (Number.isNaN(numericValue)) {
                 return;
             }
 
             ensureAudioContext();
-            applyFilterValue(value);
+            applyFilterValue(numericValue);
+            const normalized = String(numericValue);
+            if (source !== "desktop") {
+                filterSlider.value = normalized;
+            }
+            if (source !== "mobile") {
+                mobileFilterSlider.value = normalized;
+            }
+        };
+
+        rateSlider.addEventListener("input", (event) => {
+            handleRateInput(event.target.value, "desktop");
+        });
+
+        mobileRateSlider.addEventListener("input", (event) => {
+            handleRateInput(event.target.value, "mobile");
+        });
+
+        filterSlider.addEventListener("input", (event) => {
+            handleFilterInput(event.target.value, "desktop");
+        });
+
+        mobileFilterSlider.addEventListener("input", (event) => {
+            handleFilterInput(event.target.value, "mobile");
         });
 
         prevButton.addEventListener("click", () => {
