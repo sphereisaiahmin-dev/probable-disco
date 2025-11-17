@@ -4,6 +4,11 @@ const AUDIO_ANALYZER_OP_ID = "jh3bkljmu";
 const AUDIO_OUTPUT_OP_ID = "po29fcheo";
 const AUDIO_PLAYER_OP_ID = "o2ic2lisc";
 const MAX_PIXEL_RATIO = 2;
+const INTERNAL_AUDIO_BUFFER_OP_IDS = [
+    "66b159aa-bcc4-446b-8b1c-673c4598d0ea",
+    "5d7e9d04-c5ee-4a23-9a2f-5f19805dc4e4",
+    "335b9a4e-3984-424f-b3a8-5499d980a008"
+];
 
 let mothRuntimePromise = null;
 
@@ -150,12 +155,22 @@ function disableInternalAudio(patch) {
         if (outputOp) {
             setPortValue(outputOp, "Mute", 1);
             setPortValue(outputOp, "Volume", 0);
+            setPortValue(outputOp, "Show Audio Suspended Button", 0);
         }
 
         const bufferPlayer = patch.getOpById?.(AUDIO_PLAYER_OP_ID);
         if (bufferPlayer) {
             setPortValue(bufferPlayer, "Loop", 0);
+            setPortValue(bufferPlayer, "Start / Stop", 0);
+            setPortValue(bufferPlayer, "Audio Buffer", null);
         }
+
+        INTERNAL_AUDIO_BUFFER_OP_IDS.forEach((opId) => {
+            const bufferOp = patch.getOpById?.(opId);
+            if (bufferOp) {
+                setPortValue(bufferOp, "URL", null);
+            }
+        });
     } catch (error) {
         console.warn("moth scene: failed to mute internal audio", error);
     }
@@ -185,31 +200,30 @@ export function createMothScene() {
         isUnmounted = false;
 
         const audioControllerPromise = waitForAudioController().catch(() => null);
-        await ensureMothRuntime();
+        const runtimeReadyPromise = ensureMothRuntime();
+
+        const audioController = await audioControllerPromise;
         if (isUnmounted) {
             return;
         }
 
-        await waitForExportedPatch();
+        if (!audioController) {
+            throw new Error("moth scene requires a shared audio controller");
+        }
+
+        await runtimeReadyPromise;
         if (isUnmounted) {
             return;
         }
 
-        patchInstance = await instantiatePatch(canvasElement);
+        patchInstance = await instantiatePatch(canvasElement, audioController);
         if (isUnmounted) {
             patchInstance?.dispose?.();
             patchInstance = null;
             return;
         }
 
-        audioControllerPromise
-            .then((controller) => {
-                if (!controller || isUnmounted) {
-                    return;
-                }
-                attachAudioBridge(controller);
-            })
-            .catch(() => {});
+        attachAudioBridge(audioController);
     }
 
     function attachAudioBridge(controller) {
@@ -249,7 +263,15 @@ export function createMothScene() {
             return;
         }
 
-        const success = setPortValue(analyserOp, "Audio In", node);
+        let success = false;
+        try {
+            success = setPortValue(analyserOp, "Audio In", node);
+        } catch (error) {
+            console.warn("moth scene: failed to route audio node", error);
+            queuedAudioNode = node;
+            return;
+        }
+
         if (success) {
             queuedAudioNode = null;
         } else {
@@ -257,12 +279,31 @@ export function createMothScene() {
         }
     }
 
-    async function instantiatePatch(canvas) {
+    async function instantiatePatch(canvas, audioController) {
         return new Promise((resolve, reject) => {
             const exportedPatch = window.CABLES?.exportedPatches?.[PATCH_ID];
             if (!exportedPatch) {
                 reject(new Error("moth scene: exported patch missing"));
                 return;
+            }
+
+            const sharedAudioContext = audioController?.getAudioContext?.();
+            const webAudio = window.CABLES?.WEBAUDIO;
+            let restoredContext = false;
+            let originalCreateAudioContext = null;
+
+            const restoreAudioContext = () => {
+                if (!restoredContext && originalCreateAudioContext && webAudio) {
+                    webAudio.createAudioContext = originalCreateAudioContext;
+                    restoredContext = true;
+                }
+            };
+
+            if (sharedAudioContext && webAudio && typeof webAudio.createAudioContext === "function") {
+                originalCreateAudioContext = webAudio.createAudioContext;
+                webAudio.createAudioContext = function patchedCreateAudioContext() {
+                    return sharedAudioContext;
+                };
             }
 
             try {
@@ -290,8 +331,11 @@ export function createMothScene() {
                 });
 
                 instance.cgl?.setAutoResize?.("none");
+                restoreAudioContext();
             } catch (error) {
+                restoreAudioContext();
                 reject(error);
+                return;
             }
         });
     }
