@@ -30,5 +30,15 @@ export const artWindowConfig = [
         initialSize: { width: 360, height: 240 },
         previewGradient: "linear-gradient(135deg, rgba(32,96,192,0.35), rgba(255,255,255,0.08))",
         hint: "launch scene"
+    },
+    {
+        id: "moth",
+        title: "moth",
+        tags: ["audio reactive", "cables.gl"],
+        sceneId: "moth",
+        initialPosition: { x: 520, y: 140 },
+        initialSize: { width: 480, height: 360 },
+        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,120,0,0.25))",
+        hint: "syncs with audio"
     }
 ];
