@@ -374,12 +374,17 @@
                 return;
             }
 
-            if (mobileMediaQuery.matches) {
+            const isMobile = mobileMediaQuery.matches;
+
+            if (isMobile) {
                 if (!mobileControlsSlot.contains(controls)) {
                     mobileControlsSlot.appendChild(controls);
                 }
                 if (!mobileControlsSlot.contains(mobileDspPanel)) {
                     mobileControlsSlot.appendChild(mobileDspPanel);
+                }
+                if (mobileToggleButton.parentElement !== controls) {
+                    controls.appendChild(mobileToggleButton);
                 }
             } else {
                 if (!transport.contains(controls)) {
@@ -388,7 +393,12 @@
                 if (!transport.contains(mobileDspPanel)) {
                     transport.appendChild(mobileDspPanel);
                 }
+                if (mobileToggleButton.parentElement !== mobileDspPanel) {
+                    mobileDspPanel.insertBefore(mobileToggleButton, mobileFilterControl.wrapper);
+                }
             }
+
+            mobileDspPanel.classList.toggle("audio-player__mobile-dsp-panel--compact", isMobile);
         };
 
         let mobileDspExpanded = false;
