@@ -248,6 +248,10 @@ body {
     transition: background 0.3s ease, color 0.3s ease;
 }
 
+.audio-player__mobile-toggle {
+    display: none;
+}
+
 .audio-player__dsp {
     display: flex;
     flex-direction: column;
@@ -1062,7 +1066,9 @@ html[data-page="music"] [data-background-canvas] {
         --audio-player-clearance: 10vh;
     }
 
-    html[data-page="art"] body {
+    html[data-page="art"] body,
+    html[data-page="work"] body,
+    html[data-page="music"] body {
         padding-bottom: var(--audio-player-clearance);
         display: block;
         overflow-y: auto;
@@ -1131,36 +1137,42 @@ html[data-page="music"] [data-background-canvas] {
         width: 100%;
         position: relative;
         justify-content: center;
+        flex-direction: column;
+        gap: 0.75rem;
     }
 
     .audio-player__dsp {
-        position: fixed;
-        bottom: calc(var(--audio-player-clearance) + 0.65rem);
-        right: clamp(0.75rem, 4vw, 1.5rem);
-        width: min(360px, 92vw);
-        max-height: calc(80vh - var(--audio-player-clearance));
-        overflow-y: auto;
-        border-radius: 1rem 1rem 0 0;
-        transform: translateY(calc(100% - 2.35rem));
-        transition: transform 0.4s ease;
-        box-shadow: 0 1.25rem 2.5rem rgba(0, 0, 0, 0.55);
-        z-index: 4;
-        pointer-events: auto;
+        position: static;
+        bottom: auto;
+        right: auto;
+        width: 100%;
+        max-height: none;
+        overflow: visible;
+        border-radius: 0;
+        transform: none;
+        box-shadow: none;
+        z-index: auto;
+        display: none;
+        align-items: stretch;
+        gap: 0.65rem;
+        padding-top: 0.25rem;
     }
 
-    .audio-player__dsp::after {
-        content: "more controls";
-        display: block;
-        text-align: center;
-        letter-spacing: 0.25em;
+    .audio-player.audio-player--mobile-dsp .audio-player__dsp {
+        display: flex;
+    }
+
+    .audio-player.audio-player--mobile-dsp .audio-player__controls {
+        display: none;
+    }
+
+    .audio-player__mobile-toggle {
+        display: inline-flex;
+        width: 100%;
+        justify-content: center;
+        letter-spacing: 0.2em;
         text-transform: uppercase;
-        font-size: 0.65rem;
-        padding: 0.35rem 0;
-    }
-
-    .audio-player__dsp:focus-within,
-    .audio-player__dsp:hover {
-        transform: translateY(0);
+        order: 3;
     }
 
     .art-surface {
