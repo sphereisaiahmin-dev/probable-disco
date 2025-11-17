@@ -205,6 +205,7 @@
                 <div class="audio-player__ticker" aria-live="polite" aria-atomic="true">
                     <span class="audio-player__ticker-text" data-role="ticker">loading audio feed…</span>
                 </div>
+                <div class="audio-player__mobile-controls-slot" data-role="mobile-controls-slot"></div>
                 <div class="audio-player__visualizer" aria-hidden="true">
                     <span class="audio-player__visualizer-bar audio-player__visualizer-bar--r" data-role="visualizer-bar"></span>
                     <span class="audio-player__visualizer-bar audio-player__visualizer-bar--g" data-role="visualizer-bar"></span>
@@ -324,6 +325,38 @@
         footer.append(timeline, transport);
 
         document.body.appendChild(footer);
+
+        const mobileControlsSlot = footer.querySelector('[data-role="mobile-controls-slot"]');
+        const mobileMediaQuery = window.matchMedia('(max-width: 640px)');
+
+        const relocateControlsForMobile = () => {
+            if (!mobileControlsSlot) {
+                return;
+            }
+
+            if (mobileMediaQuery.matches) {
+                if (!mobileControlsSlot.contains(controls)) {
+                    mobileControlsSlot.appendChild(controls);
+                }
+                if (!mobileControlsSlot.contains(mobileToggleButton)) {
+                    mobileControlsSlot.appendChild(mobileToggleButton);
+                }
+            } else {
+                if (!transport.contains(controls)) {
+                    transport.insertBefore(controls, mobileToggleButton);
+                }
+                if (!transport.contains(mobileToggleButton)) {
+                    transport.appendChild(mobileToggleButton);
+                }
+            }
+        };
+
+        relocateControlsForMobile();
+        if (typeof mobileMediaQuery.addEventListener === "function") {
+            mobileMediaQuery.addEventListener("change", relocateControlsForMobile);
+        } else if (typeof mobileMediaQuery.addListener === "function") {
+            mobileMediaQuery.addListener(relocateControlsForMobile);
+        }
 
         let mobileDspExpanded = false;
 
