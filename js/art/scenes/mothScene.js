@@ -184,6 +184,7 @@ export function createMothScene() {
     let unsubscribeAnalyser = null;
     let queuedAudioNode = null;
     let isUnmounted = false;
+    let attachedAudioController = null;
 
     function resize(width, height) {
         applyCanvasSize(canvasElement, width, height);
@@ -200,16 +201,18 @@ export function createMothScene() {
         applyCanvasSize(canvasElement, bounds.width, bounds.height);
         isUnmounted = false;
 
-        const audioControllerPromise = waitForAudioController().catch(() => null);
         const runtimeReadyPromise = ensureMothRuntime();
+        const audioControllerPromise = waitForAudioController().catch(() => null);
 
-        const audioController = await audioControllerPromise;
-        if (isUnmounted) {
-            return;
-        }
+        let resolvedAudioController = window.__saintjustusAudioController?.ready
+            ? window.__saintjustusAudioController
+            : null;
 
-        if (!audioController) {
-            throw new Error("moth scene requires a shared audio controller");
+        if (!resolvedAudioController) {
+            resolvedAudioController = await Promise.race([
+                audioControllerPromise,
+                runtimeReadyPromise.then(() => null)
+            ]);
         }
 
         await runtimeReadyPromise;
@@ -217,20 +220,41 @@ export function createMothScene() {
             return;
         }
 
-        patchInstance = await instantiatePatch(canvasElement, audioController);
+        patchInstance = await instantiatePatch(canvasElement, resolvedAudioController);
         if (isUnmounted) {
             patchInstance?.dispose?.();
             patchInstance = null;
             return;
         }
 
-        attachAudioBridge(audioController);
+        attachAudioBridge(resolvedAudioController);
+
+        audioControllerPromise
+            .then((controller) => {
+                if (!controller || isUnmounted || controller === attachedAudioController) {
+                    return;
+                }
+                attachAudioBridge(controller);
+            })
+            .catch(() => {});
     }
 
     function attachAudioBridge(controller) {
+        if (typeof unsubscribeAnalyser === "function") {
+            try {
+                unsubscribeAnalyser();
+            } catch (error) {
+                console.warn("moth scene: failed to detach analyser listener", error);
+            }
+            unsubscribeAnalyser = null;
+        }
+
         if (!controller) {
+            attachedAudioController = null;
             return;
         }
+
+        attachedAudioController = controller;
 
         if (typeof controller.getAnalyserNode === "function") {
             const analyserNode = controller.getAnalyserNode();
@@ -348,6 +372,7 @@ export function createMothScene() {
     function unmount() {
         isUnmounted = true;
         queuedAudioNode = null;
+        attachedAudioController = null;
 
         if (typeof unsubscribeAnalyser === "function") {
             unsubscribeAnalyser();
