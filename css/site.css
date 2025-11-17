@@ -1182,6 +1182,10 @@ html[data-page="music"] [data-background-canvas] {
         gap: 0.4rem;
     }
 
+    .audio-player.audio-player--mobile-dsp .audio-player__controls {
+        display: none;
+    }
+
     .audio-player__transport {
         width: 100%;
         position: relative;
@@ -1234,7 +1238,7 @@ html[data-page="music"] [data-background-canvas] {
     }
 
     .audio-player__mobile-dsp-panel--compact {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     }
 
     .audio-player.audio-player--mobile-dsp .audio-player__mobile-dsp-panel {

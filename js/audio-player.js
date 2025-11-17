@@ -383,7 +383,11 @@
                 if (!mobileControlsSlot.contains(mobileDspPanel)) {
                     mobileControlsSlot.appendChild(mobileDspPanel);
                 }
-                if (mobileToggleButton.parentElement !== controls) {
+                if (mobileDspExpanded) {
+                    if (mobileToggleButton.parentElement !== mobileDspPanel) {
+                        mobileDspPanel.insertBefore(mobileToggleButton, mobileFilterControl.wrapper);
+                    }
+                } else if (mobileToggleButton.parentElement !== controls) {
                     controls.appendChild(mobileToggleButton);
                 }
             } else {
@@ -412,6 +416,8 @@
                 "aria-label",
                 mobileDspExpanded ? "show playback controls" : "show rate and filter controls"
             );
+
+            relocateControlsForMobile();
         };
 
         setMobileDspExpanded(false);
