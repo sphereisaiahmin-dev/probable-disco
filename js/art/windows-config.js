@@ -22,6 +22,16 @@ export const artWindowConfig = [
         useCanvas: false
     },
     {
+        id: "moth",
+        title: "moth",
+        tags: ["audio", "cables.gl"],
+        sceneId: "moth",
+        initialPosition: { x: 520, y: 100 },
+        initialSize: { width: 420, height: 300 },
+        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.18), rgba(136,52,201,0.35))",
+        hint: "mic input"
+    },
+    {
         id: "test-art",
         title: "test art",
         tags: ["prototype", "canvas"],
