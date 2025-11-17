@@ -1,4 +1,4 @@
-const MOTH_SCRIPT_URL = "/moth/js/patch.js";
+const MOTH_SCRIPT_URL = "/js/art/scenes/moth/js/patch.js";
 const PATCH_ID = "aT0pK2";
 const AUDIO_ANALYZER_OP_ID = "jh3bkljmu";
 const AUDIO_OUTPUT_OP_ID = "po29fcheo";
@@ -309,7 +309,7 @@ export function createMothScene() {
             try {
                 const instance = new window.CABLES.Patch({
                     patch: exportedPatch,
-                    prefixAssetPath: "moth/",
+                    prefixAssetPath: "js/art/scenes/moth/",
                     assetPath: "assets/",
                     jsPath: "js/",
                     glCanvas: canvas,
