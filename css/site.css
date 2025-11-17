@@ -73,6 +73,10 @@ body {
     pointer-events: none;
 }
 
+.audio-player__mobile-controls-slot {
+    display: none;
+}
+
 .audio-player__ticker {
     max-width: min(320px, 40vw);
     overflow: hidden;
@@ -1111,6 +1115,14 @@ html[data-page="music"] [data-background-canvas] {
         pointer-events: auto;
     }
 
+    .audio-player__mobile-controls-slot {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        width: 100%;
+        pointer-events: auto;
+    }
+
     .audio-player__ticker {
         max-width: none;
         width: 100%;
@@ -1118,9 +1130,7 @@ html[data-page="music"] [data-background-canvas] {
     }
 
     .audio-player__meta {
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 0.35rem;
+        display: none;
     }
 
     .audio-player__timeline {
