@@ -453,6 +453,11 @@ canvas {
     pointer-events: none;
 }
 
+.art-window-active .theme-toggle {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .theme-toggle {
     padding: 0.65rem;
     border-radius: 999px;
