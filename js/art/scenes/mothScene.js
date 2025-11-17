@@ -1,4 +1,5 @@
-const MOTH_SCRIPT_URL = "/moth/js/patch.js";
+const MOTH_ASSET_PREFIX = "/js/art/scenes/moth/";
+const MOTH_SCRIPT_URL = `${MOTH_ASSET_PREFIX}js/patch.js`;
 const PATCH_ID = "aT0pK2";
 const AUDIO_ANALYZER_OP_ID = "jh3bkljmu";
 const AUDIO_OUTPUT_OP_ID = "po29fcheo";
@@ -306,23 +307,27 @@ export function createMothScene() {
                 };
             }
 
+            let instance;
             try {
-                const instance = new window.CABLES.Patch({
+                instance = new window.CABLES.Patch({
                     patch: exportedPatch,
-                    prefixAssetPath: "moth/",
+                    prefixAssetPath: MOTH_ASSET_PREFIX,
                     assetPath: "assets/",
                     jsPath: "js/",
                     glCanvas: canvas,
                     glCanvasResizeToWindow: false,
                     silent: true,
-                    onPatchLoaded: () => {
-                        disableInternalAudio(instance);
+                    onPatchLoaded: (patch) => {
+                        const activeInstance = patch || instance;
+                        if (activeInstance) {
+                            disableInternalAudio(activeInstance);
+                        }
                         if (queuedAudioNode) {
                             routeAudioNode(queuedAudioNode);
                         }
                     },
-                    onFinishedLoading: () => {
-                        resolve(instance);
+                    onFinishedLoading: (patch) => {
+                        resolve(patch || instance);
                     },
                     onError: (initiator, error) => {
                         console.error("moth scene: cables error", initiator, error);
