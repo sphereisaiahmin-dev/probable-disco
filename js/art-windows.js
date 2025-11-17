@@ -42,10 +42,13 @@ bootstrapLayers();
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
         bootstrapLayers();
+        refreshLayerPlacement(document.documentElement.dataset.page ?? null);
         revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
     });
 } else {
     requestAnimationFrame(() => {
+        bootstrapLayers();
+        refreshLayerPlacement(document.documentElement.dataset.page ?? null);
         revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
     });
 }
@@ -54,6 +57,7 @@ document.addEventListener("shell:navigation", (event) => {
     const targetId = event?.detail?.pageId;
     requestAnimationFrame(() => {
         bootstrapLayers();
+        refreshLayerPlacement(targetId);
         revealLayer(targetId);
     });
 });
@@ -99,6 +103,38 @@ function bootstrapLayers() {
             connectLayer(layerKey, layer, configs);
         });
     });
+}
+
+function refreshLayerPlacement(layerKey) {
+    if (!layerKey) {
+        return;
+    }
+
+    const state = layerRegistry.get(layerKey);
+    if (!state || !state.windows.length) {
+        return;
+    }
+
+    placementCache.delete(layerKey);
+
+    state.windows.forEach((windowElement) => {
+        if (!windowElement || windowElement.classList.contains("is-active")) {
+            return;
+        }
+
+        const configId = windowElement.dataset.windowId;
+        if (!configId) {
+            return;
+        }
+
+        const config = configIndex.get(configId);
+        if (!config) {
+            return;
+        }
+
+        applyInitialPlacement(windowElement, config);
+    });
+
 }
 
 function getLayerSelector(layerKey) {
@@ -997,11 +1033,24 @@ function captureRuntimePreview(windowElement, state) {
     }
 
     runtimePreviewCache.set(state.config.uid, dataUrl);
-    const preview = windowElement.querySelector(".art-window__preview");
-    if (preview) {
-        preview.style.backgroundImage = `url(${dataUrl})`;
-        preview.classList.add("has-image", "has-runtime-thumbnail");
+    updateRuntimePreviewDisplays(state.config.uid, dataUrl);
+}
+
+function updateRuntimePreviewDisplays(configUid, dataUrl = null) {
+    if (!configUid) {
+        return;
     }
+
+    const previewData = dataUrl || runtimePreviewCache.get(configUid);
+    if (!previewData) {
+        return;
+    }
+
+    const previewNodes = document.querySelectorAll(`.art-window[data-window-id="${configUid}"] .art-window__preview`);
+    previewNodes.forEach((preview) => {
+        preview.style.backgroundImage = `url(${previewData})`;
+        preview.classList.add("has-image", "has-runtime-thumbnail");
+    });
 }
 
 function storeWindowOrigin(windowElement) {
