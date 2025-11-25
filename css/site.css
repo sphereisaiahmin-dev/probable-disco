@@ -147,6 +147,8 @@ body {
 
 .audio-player__seek,
 .audio-player__slider {
+    --slider-translation: 0%;
+    --slider-normalized: 0.5;
     appearance: none;
     width: 100%;
     height: 0.2rem;
@@ -157,6 +159,7 @@ body {
         rgba(96, 160, 255, 0.2)
     );
     background-size: 200% 100%;
+    background-position: calc(50% + var(--slider-translation)) 50%;
     border-radius: 999px;
     position: relative;
     cursor: pointer;
