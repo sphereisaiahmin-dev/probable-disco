@@ -524,6 +524,9 @@
 
         function setPlaybackRate(rate) {
             const nextRate = Number.isFinite(rate) && rate > 0 ? rate : RATE_DEFAULT;
+            const wasPlaying = !audio.paused && !audio.ended;
+            const resumeTime = Number.isFinite(audio.currentTime) ? audio.currentTime : null;
+
             audio.playbackRate = nextRate;
             audio.defaultPlaybackRate = nextRate;
 
@@ -535,6 +538,15 @@
             }
             if ("webkitPreservesPitch" in audio) {
                 audio.webkitPreservesPitch = false;
+            }
+
+            if (wasPlaying && audio.paused) {
+                if (resumeTime !== null && audio.readyState >= 1) {
+                    const targetTime = Math.min(resumeTime, audio.duration || resumeTime);
+                    audio.currentTime = targetTime;
+                }
+
+                audio.play().catch(() => {});
             }
 
             return nextRate;
