@@ -540,19 +540,35 @@
             return nextRate;
         }
 
+        function syncSliderPair({ desktopSlider, mobileSlider, value, source }) {
+            const normalized = String(value);
+
+            if (source !== "desktop") {
+                desktopSlider.value = normalized;
+            }
+            if (source !== "mobile") {
+                mobileSlider.value = normalized;
+            }
+
+            updateSliderParabola(desktopSlider);
+            updateSliderParabola(mobileSlider);
+        }
+
+        function syncRateControls(value, source) {
+            syncSliderPair({ desktopSlider: rateSlider, mobileSlider: mobileRateSlider, value, source });
+        }
+
+        function syncFilterControls(value, source) {
+            syncSliderPair({ desktopSlider: filterSlider, mobileSlider: mobileFilterSlider, value, source });
+        }
+
         function resetDspParameters() {
-            rateSlider.value = String(RATE_DEFAULT);
-            mobileRateSlider.value = String(RATE_DEFAULT);
             const appliedRate = setPlaybackRate(RATE_DEFAULT);
             updateRateDisplay(appliedRate);
-            updateSliderParabola(rateSlider);
-            updateSliderParabola(mobileRateSlider);
+            syncRateControls(appliedRate);
 
-            filterSlider.value = String(FILTER_DEFAULT);
-            mobileFilterSlider.value = String(FILTER_DEFAULT);
             applyFilterValue(FILTER_DEFAULT);
-            updateSliderParabola(filterSlider);
-            updateSliderParabola(mobileFilterSlider);
+            syncFilterControls(FILTER_DEFAULT);
         }
 
         let tracks = [];
@@ -1066,16 +1082,7 @@
 
             const appliedRate = setPlaybackRate(rate);
             updateRateDisplay(appliedRate);
-            const normalized = String(appliedRate);
-            if (source !== "desktop") {
-                rateSlider.value = normalized;
-            }
-            if (source !== "mobile") {
-                mobileRateSlider.value = normalized;
-            }
-
-            updateSliderParabola(rateSlider);
-            updateSliderParabola(mobileRateSlider);
+            syncRateControls(appliedRate, source);
         };
 
         const handleFilterInput = (value, source) => {
@@ -1086,16 +1093,7 @@
 
             ensureAudioContext();
             applyFilterValue(numericValue);
-            const normalized = String(numericValue);
-            if (source !== "desktop") {
-                filterSlider.value = normalized;
-            }
-            if (source !== "mobile") {
-                mobileFilterSlider.value = normalized;
-            }
-
-            updateSliderParabola(filterSlider);
-            updateSliderParabola(mobileFilterSlider);
+            syncFilterControls(numericValue, source);
         };
 
         rateSlider.addEventListener("input", (event) => {
