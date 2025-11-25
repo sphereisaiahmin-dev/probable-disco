@@ -181,6 +181,28 @@
         }
     }
 
+    function updateSliderParabola(input) {
+        if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const min = Number(input.min);
+        const max = Number(input.max);
+        const value = Number(input.value);
+
+        if (!Number.isFinite(min) || !Number.isFinite(max) || min === max || Number.isNaN(value)) {
+            return;
+        }
+
+        const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)));
+        const centered = normalized - 0.5;
+        const signedParabola = (centered === 0 ? 0 : centered / Math.abs(centered)) * centered * centered;
+        const translationPercent = signedParabola * 100;
+
+        input.style.setProperty("--slider-normalized", normalized.toFixed(4));
+        input.style.setProperty("--slider-translation", `${translationPercent.toFixed(2)}%`);
+    }
+
     function createPlayerShell() {
         const audio = new Audio();
         audio.preload = "metadata";
@@ -285,28 +307,6 @@
             group.append(label, input, valueDisplay);
 
             return { group, input, valueDisplay };
-        }
-
-        function updateSliderParabola(input) {
-            if (!(input instanceof HTMLInputElement)) {
-                return;
-            }
-
-            const min = Number(input.min);
-            const max = Number(input.max);
-            const value = Number(input.value);
-
-            if (!Number.isFinite(min) || !Number.isFinite(max) || min === max || Number.isNaN(value)) {
-                return;
-            }
-
-            const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)));
-            const centered = normalized - 0.5;
-            const signedParabola = (centered === 0 ? 0 : centered / Math.abs(centered)) * centered * centered;
-            const translationPercent = signedParabola * 100;
-
-            input.style.setProperty("--slider-normalized", normalized.toFixed(4));
-            input.style.setProperty("--slider-translation", `${translationPercent.toFixed(2)}%`);
         }
 
         function createMobileDspSlider(labelText, role, { min, max, step, value, ariaLabel }) {
