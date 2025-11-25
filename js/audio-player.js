@@ -287,6 +287,28 @@
             return { group, input, valueDisplay };
         }
 
+        function updateSliderParabola(input) {
+            if (!(input instanceof HTMLInputElement)) {
+                return;
+            }
+
+            const min = Number(input.min);
+            const max = Number(input.max);
+            const value = Number(input.value);
+
+            if (!Number.isFinite(min) || !Number.isFinite(max) || min === max || Number.isNaN(value)) {
+                return;
+            }
+
+            const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)));
+            const centered = normalized - 0.5;
+            const signedParabola = (centered === 0 ? 0 : centered / Math.abs(centered)) * centered * centered;
+            const translationPercent = signedParabola * 100;
+
+            input.style.setProperty("--slider-normalized", normalized.toFixed(4));
+            input.style.setProperty("--slider-translation", `${translationPercent.toFixed(2)}%`);
+        }
+
         function createMobileDspSlider(labelText, role, { min, max, step, value, ariaLabel }) {
             const wrapper = document.createElement("div");
             wrapper.className = `audio-player__mobile-slider audio-player__mobile-slider--${role}`;
@@ -523,10 +545,14 @@
             mobileRateSlider.value = String(RATE_DEFAULT);
             const appliedRate = setPlaybackRate(RATE_DEFAULT);
             updateRateDisplay(appliedRate);
+            updateSliderParabola(rateSlider);
+            updateSliderParabola(mobileRateSlider);
 
             filterSlider.value = String(FILTER_DEFAULT);
             mobileFilterSlider.value = String(FILTER_DEFAULT);
             applyFilterValue(FILTER_DEFAULT);
+            updateSliderParabola(filterSlider);
+            updateSliderParabola(mobileFilterSlider);
         }
 
         let tracks = [];
@@ -1047,6 +1073,9 @@
             if (source !== "mobile") {
                 mobileRateSlider.value = normalized;
             }
+
+            updateSliderParabola(rateSlider);
+            updateSliderParabola(mobileRateSlider);
         };
 
         const handleFilterInput = (value, source) => {
@@ -1064,6 +1093,9 @@
             if (source !== "mobile") {
                 mobileFilterSlider.value = normalized;
             }
+
+            updateSliderParabola(filterSlider);
+            updateSliderParabola(mobileFilterSlider);
         };
 
         rateSlider.addEventListener("input", (event) => {
