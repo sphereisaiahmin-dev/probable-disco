@@ -13,6 +13,12 @@
     --canvas-background-color: #000;
     --divider-color: rgba(255, 255, 255, 0.16);
     --window-highlight-border: rgba(255, 255, 255, 0.4);
+    --tag-red: #ff6b6b;
+    --tag-red-surface: rgba(255, 107, 107, 0.14);
+    --tag-green: #7cf29c;
+    --tag-green-surface: rgba(124, 242, 156, 0.14);
+    --tag-blue: #6ea8ff;
+    --tag-blue-surface: rgba(110, 168, 255, 0.14);
 }
 
 body.theme-light {
@@ -783,6 +789,24 @@ html[data-page="music"] [data-background-canvas] {
     white-space: nowrap;
 }
 
+.art-window__tag--red {
+    border-color: var(--tag-red);
+    color: var(--tag-red);
+    background: var(--tag-red-surface);
+}
+
+.art-window__tag--green {
+    border-color: var(--tag-green);
+    color: var(--tag-green);
+    background: var(--tag-green-surface);
+}
+
+.art-window__tag--blue {
+    border-color: var(--tag-blue);
+    color: var(--tag-blue);
+    background: var(--tag-blue-surface);
+}
+
 .art-window__controls {
     display: flex;
     align-items: center;
@@ -804,6 +828,11 @@ html[data-page="music"] [data-background-canvas] {
 .art-window__control:hover,
 .art-window__control:focus-visible {
     background: var(--control-hover-background);
+}
+
+.art-window__control--description.is-active {
+    background: var(--control-hover-background);
+    border: 1px solid var(--divider-color);
 }
 
 .art-window__viewport {
