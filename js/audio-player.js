@@ -344,37 +344,11 @@
         const transport = document.createElement("div");
         transport.className = "audio-player__transport";
 
-        const mobileToggleButton = document.createElement("button");
-        mobileToggleButton.type = "button";
-        mobileToggleButton.className = "audio-player__control audio-player__mobile-toggle";
-        mobileToggleButton.textContent = "more controls";
-        mobileToggleButton.setAttribute("aria-label", "show rate and filter controls");
-        mobileToggleButton.setAttribute("aria-expanded", "false");
-
-        transport.append(dspModule, controls, mobileToggleButton);
+        transport.append(dspModule, controls);
 
         footer.append(timeline, transport);
 
         document.body.appendChild(footer);
-
-        let mobileDspExpanded = false;
-
-        const setMobileDspExpanded = (expanded) => {
-            mobileDspExpanded = Boolean(expanded);
-            footer.classList.toggle("audio-player--mobile-dsp", mobileDspExpanded);
-            mobileToggleButton.setAttribute("aria-expanded", mobileDspExpanded ? "true" : "false");
-            mobileToggleButton.textContent = mobileDspExpanded ? "play" : "dsp";
-            mobileToggleButton.setAttribute(
-                "aria-label",
-                mobileDspExpanded ? "show playback controls" : "show rate and filter controls"
-            );
-        };
-
-        setMobileDspExpanded(false);
-
-        mobileToggleButton.addEventListener("click", () => {
-            setMobileDspExpanded(!mobileDspExpanded);
-        });
 
         const ticker = footer.querySelector('[data-role="ticker"]');
         const metaId = footer.querySelector('[data-role="meta-id"]');
