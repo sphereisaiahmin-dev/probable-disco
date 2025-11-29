@@ -1063,7 +1063,7 @@ html[data-page="music"] [data-background-canvas] {
 
 @media (max-width: 640px) {
     :root {
-        --audio-player-clearance: 10vh;
+        --audio-player-clearance: max(18vh, 140px);
     }
 
     html[data-page="art"] body,
@@ -1100,7 +1100,7 @@ html[data-page="music"] [data-background-canvas] {
         gap: 0.6rem;
         padding: 0.5rem 0.75rem;
         min-height: var(--audio-player-clearance);
-        height: var(--audio-player-clearance);
+        height: auto;
         font-size: 0.72rem;
     }
 
