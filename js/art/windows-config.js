@@ -1,8 +1,15 @@
+import { getSceneMetadata } from "./scene-registry.js";
+
+const asciiScene = getSceneMetadata("ascii");
+const impressionsScene = getSceneMetadata("webcam-impressions");
+const testArtScene = getSceneMetadata("test-art");
+
 export const artWindowConfig = [
     {
         id: "ascii",
         title: "ASCII",
-        tags: ["cables.gl", "iframe"],
+        tags: asciiScene.tags,
+        description: asciiScene.description,
         sceneId: "ascii",
         initialPosition: { x: 220, y: 120 },
         initialSize: { width: 480, height: 320 },
@@ -13,7 +20,8 @@ export const artWindowConfig = [
     {
         id: "webcam-impressions",
         title: "impressions",
-        tags: ["webcam", "cables.gl"],
+        tags: impressionsScene.tags,
+        description: impressionsScene.description,
         sceneId: "webcam-impressions",
         initialPosition: { x: 160, y: 180 },
         initialSize: { width: 520, height: 360 },
@@ -24,7 +32,8 @@ export const artWindowConfig = [
     {
         id: "test-art",
         title: "test art",
-        tags: ["prototype", "canvas"],
+        tags: testArtScene.tags,
+        description: testArtScene.description,
         sceneId: "test-art",
         initialPosition: { x: 360, y: 280 },
         initialSize: { width: 360, height: 240 },
