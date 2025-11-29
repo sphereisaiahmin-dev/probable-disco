@@ -209,6 +209,8 @@ function createWindowElement(config) {
     title.textContent = config.title;
     heading.appendChild(title);
 
+    const descriptionText = (config.description || "").trim();
+
     const tags = createTagList(config.tags);
     if (tags) {
         heading.appendChild(tags);
@@ -216,6 +218,16 @@ function createWindowElement(config) {
 
     const controls = document.createElement("div");
     controls.className = "art-window__controls";
+
+    let descriptionToggle = null;
+    if (descriptionText) {
+        descriptionToggle = document.createElement("button");
+        descriptionToggle.type = "button";
+        descriptionToggle.className = "art-window__control art-window__control--description";
+        descriptionToggle.textContent = "…";
+        descriptionToggle.setAttribute("aria-label", `toggle description for ${config.title}`);
+        controls.appendChild(descriptionToggle);
+    }
 
     const closeButton = document.createElement("button");
     closeButton.type = "button";
@@ -279,7 +291,7 @@ function createWindowElement(config) {
     enableResizing(windowElement, resizeHandle);
 
     registerFloatingWindow(windowElement);
-    setupDescriptionTooltip(windowElement, config.description);
+    setupDescriptionTooltip(windowElement, descriptionText, descriptionToggle);
 
     windowElement.addEventListener("click", () => {
         if (windowElement.classList.contains("is-active")) {
@@ -317,7 +329,7 @@ function createTagList(rawTags) {
 
     tags.forEach((tag) => {
         const item = document.createElement("span");
-        item.className = "art-window__tag";
+        item.className = `art-window__tag ${getRandomTagColorClass()}`;
         item.textContent = tag;
         list.appendChild(item);
     });
@@ -336,41 +348,49 @@ function normaliseTags(tags) {
         .slice(0, 3);
 }
 
-function setupDescriptionTooltip(windowElement, description) {
+function getRandomTagColorClass() {
+    const palette = ["red", "green", "blue"];
+    const choice = palette[Math.floor(Math.random() * palette.length)];
+    return `art-window__tag--${choice}`;
+}
+
+function setupDescriptionTooltip(windowElement, description, toggleButton) {
     const text = (description || "").trim();
     if (!text) {
         return;
     }
 
-    let tooltip = null;
+    const tooltip = document.createElement("div");
+    tooltip.className = "art-window__tooltip";
+    tooltip.textContent = text;
+    tooltip.setAttribute("role", "status");
+    tooltip.hidden = true;
+    windowElement.appendChild(tooltip);
+
+    let pinned = false;
     let hoverTimeout = null;
 
     const showTooltip = () => {
-        if (!tooltip) {
-            tooltip = document.createElement("div");
-            tooltip.className = "art-window__tooltip";
-            tooltip.textContent = text;
-            tooltip.setAttribute("role", "status");
-            tooltip.hidden = true;
-            windowElement.appendChild(tooltip);
-        }
-
         tooltip.hidden = false;
         tooltip.dataset.visible = "1";
     };
 
-    const hideTooltip = () => {
+    const hideTooltip = (force = false) => {
         if (hoverTimeout !== null) {
             clearTimeout(hoverTimeout);
             hoverTimeout = null;
         }
-        if (tooltip) {
-            tooltip.dataset.visible = "0";
-            tooltip.hidden = true;
+        if (pinned && !force) {
+            return;
         }
+        tooltip.dataset.visible = "0";
+        tooltip.hidden = true;
     };
 
     const queueTooltip = () => {
+        if (pinned) {
+            return;
+        }
         if (hoverTimeout !== null) {
             return;
         }
@@ -379,6 +399,27 @@ function setupDescriptionTooltip(windowElement, description) {
             showTooltip();
         }, 2000);
     };
+
+    const togglePinned = () => {
+        pinned = !pinned;
+        toggleButton?.classList.toggle("is-active", pinned);
+        if (pinned) {
+            if (hoverTimeout !== null) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+            }
+            showTooltip();
+            return;
+        }
+        hideTooltip(true);
+    };
+
+    if (toggleButton) {
+        toggleButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            togglePinned();
+        });
+    }
 
     windowElement.addEventListener("pointerenter", queueTooltip);
     windowElement.addEventListener("pointerleave", hideTooltip);
