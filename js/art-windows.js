@@ -201,10 +201,18 @@ function createWindowElement(config) {
     const header = document.createElement("header");
     header.className = "art-window__header";
 
+    const heading = document.createElement("div");
+    heading.className = "art-window__heading";
+
     const title = document.createElement("h2");
     title.className = "art-window__title";
     title.textContent = config.title;
-    header.appendChild(title);
+    heading.appendChild(title);
+
+    const tags = createTagList(config.tags);
+    if (tags) {
+        heading.appendChild(tags);
+    }
 
     const controls = document.createElement("div");
     controls.className = "art-window__controls";
@@ -222,6 +230,7 @@ function createWindowElement(config) {
     });
 
     controls.appendChild(closeButton);
+    header.appendChild(heading);
     header.appendChild(controls);
 
     const viewport = document.createElement("div");
@@ -270,6 +279,7 @@ function createWindowElement(config) {
     enableResizing(windowElement, resizeHandle);
 
     registerFloatingWindow(windowElement);
+    setupDescriptionTooltip(windowElement, config.description);
 
     windowElement.addEventListener("click", () => {
         if (windowElement.classList.contains("is-active")) {
@@ -294,6 +304,87 @@ function createWindowElement(config) {
     });
 
     return windowElement;
+}
+
+function createTagList(rawTags) {
+    const tags = normaliseTags(rawTags);
+    if (!tags.length) {
+        return null;
+    }
+
+    const list = document.createElement("div");
+    list.className = "art-window__tags";
+
+    tags.forEach((tag) => {
+        const item = document.createElement("span");
+        item.className = "art-window__tag";
+        item.textContent = tag;
+        list.appendChild(item);
+    });
+
+    return list;
+}
+
+function normaliseTags(tags) {
+    if (!Array.isArray(tags)) {
+        return [];
+    }
+
+    return tags
+        .map((tag) => `${tag}`.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+}
+
+function setupDescriptionTooltip(windowElement, description) {
+    const text = (description || "").trim();
+    if (!text) {
+        return;
+    }
+
+    let tooltip = null;
+    let hoverTimeout = null;
+
+    const showTooltip = () => {
+        if (!tooltip) {
+            tooltip = document.createElement("div");
+            tooltip.className = "art-window__tooltip";
+            tooltip.textContent = text;
+            tooltip.setAttribute("role", "status");
+            tooltip.hidden = true;
+            windowElement.appendChild(tooltip);
+        }
+
+        tooltip.hidden = false;
+        tooltip.dataset.visible = "1";
+    };
+
+    const hideTooltip = () => {
+        if (hoverTimeout !== null) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+        }
+        if (tooltip) {
+            tooltip.dataset.visible = "0";
+            tooltip.hidden = true;
+        }
+    };
+
+    const queueTooltip = () => {
+        if (hoverTimeout !== null) {
+            return;
+        }
+        hoverTimeout = window.setTimeout(() => {
+            hoverTimeout = null;
+            showTooltip();
+        }, 2000);
+    };
+
+    windowElement.addEventListener("pointerenter", queueTooltip);
+    windowElement.addEventListener("pointerleave", hideTooltip);
+    windowElement.addEventListener("focusin", queueTooltip);
+    windowElement.addEventListener("focusout", hideTooltip);
+    windowElement.addEventListener("pointerdown", hideTooltip);
 }
 
 function hydrateEmbedPreview(config, preview) {
