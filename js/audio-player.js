@@ -437,11 +437,19 @@
 
         let currentRateValue = RATE_DEFAULT;
         let currentFilterValue = FILTER_DEFAULT;
+        let hasStartedPlayback = false;
 
         function setPlaybackRate(rate) {
             const nextRate = Number.isFinite(rate) && rate > 0 ? rate : RATE_DEFAULT;
-            audio.playbackRate = nextRate;
-            audio.defaultPlaybackRate = nextRate;
+
+            if (audio.playbackRate !== nextRate) {
+                audio.playbackRate = nextRate;
+            }
+
+            // Updating defaultPlaybackRate mid-playback can reset media on some mobile browsers.
+            if ((audio.paused || !hasStartedPlayback) && audio.defaultPlaybackRate !== nextRate) {
+                audio.defaultPlaybackRate = nextRate;
+            }
 
             if ("preservesPitch" in audio) {
                 audio.preservesPitch = false;
@@ -1002,6 +1010,7 @@
             audio
                 .play()
                 .then(() => {
+                    hasStartedPlayback = true;
                     startVisualizer();
                     updatePlayButton();
                     queueStateSave();
