@@ -30,6 +30,7 @@ const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
 const WINDOW_EDGE_GUTTER = 24;
 const EMBED_FALLBACK_TIMEOUT = 6000;
+const WINDOW_REVEAL_DELAY = 180;
 const VIDEO_DEFAULT_RATE = 1;
 const VIDEO_HOVER_RATE = 1.5;
 
@@ -43,11 +44,11 @@ bootstrapLayers();
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
         bootstrapLayers();
-        revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
+        revealLayer(document.documentElement.dataset.page ?? null);
     });
 } else {
     requestAnimationFrame(() => {
-        revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
+        revealLayer(document.documentElement.dataset.page ?? null);
     });
 }
 
@@ -900,7 +901,8 @@ function ensureWindowState(configId) {
             previewElement: null,
             videoHoverCleanup: null,
             videoHoverAttached: false,
-            reopenTimeoutId: null
+            reopenTimeoutId: null,
+            shouldRestoreActive: false
         };
 
         windowStates.set(configId, state);
@@ -933,6 +935,8 @@ function temporarilyCloseWindow(windowElement, configId) {
         state.reopenTimeoutId = null;
     }
 
+    state.shouldRestoreActive = windowElement.classList.contains("is-active");
+
     closeWindow(windowElement, configId);
     teardownWindowContent(windowElement, state);
     windowElement.classList.remove("is-visible");
@@ -947,8 +951,29 @@ function temporarilyCloseWindow(windowElement, configId) {
         windowElement.hidden = false;
         requestAnimationFrame(() => {
             windowElement.classList.add("is-visible");
+            restoreWindowContent(windowElement, state);
         });
     }, 10000);
+}
+
+function restoreWindowContent(windowElement, state) {
+    if (!windowElement || !state) {
+        return;
+    }
+
+    initialiseLivePreview(windowElement, state);
+
+    if (state.shouldRestoreActive) {
+        state.shouldRestoreActive = false;
+        requestAnimationFrame(() => {
+            openWindow(windowElement, state.config.uid);
+        });
+        return;
+    }
+
+    if (state.config.videoSrc) {
+        ensureVideoPlayback(state);
+    }
 }
 
 function teardownWindowContent(windowElement, state) {
@@ -1578,7 +1603,7 @@ function revealLayer(layerKey, { immediate = false } = {}) {
     }
 
     state.isAnimating = true;
-    const delayUnit = immediate ? 0 : 110;
+    const delayUnit = immediate ? 0 : WINDOW_REVEAL_DELAY;
 
     state.windows.forEach((windowEl, index) => {
         const delay = delayUnit * index;
