@@ -17,6 +17,7 @@ const windowStates = new Map();
 const mountedSceneStates = new Map();
 const embedPreviewCache = new Map();
 const runtimePreviewCache = new Map();
+const tagColorAssignments = new Map();
 
 let zIndexSeed = 10;
 let listenersAttached = false;
@@ -218,6 +219,9 @@ function createWindowElement(config) {
 
     const controls = document.createElement("div");
     controls.className = "art-window__controls";
+    controls.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+    });
 
     let descriptionToggle = null;
     if (descriptionText) {
@@ -229,16 +233,25 @@ function createWindowElement(config) {
         controls.appendChild(descriptionToggle);
     }
 
+    const fullscreenButton = document.createElement("button");
+    fullscreenButton.type = "button";
+    fullscreenButton.className = "art-window__control art-window__control--fullscreen";
+    fullscreenButton.textContent = "fullscreen";
+    fullscreenButton.setAttribute("aria-label", `toggle fullscreen for ${config.title}`);
+    fullscreenButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        toggleWindowFullscreen(windowElement, config.uid);
+    });
+    controls.appendChild(fullscreenButton);
+
     const closeButton = document.createElement("button");
     closeButton.type = "button";
-    closeButton.className = "art-window__control";
+    closeButton.className = "art-window__control art-window__control--close";
     closeButton.textContent = "close";
     closeButton.setAttribute("aria-label", `close ${config.title}`);
-    closeButton.hidden = true;
-
     closeButton.addEventListener("click", (event) => {
         event.stopPropagation();
-        closeWindow(windowElement, config.uid);
+        temporarilyCloseWindow(windowElement, config.uid);
     });
 
     controls.appendChild(closeButton);
@@ -329,7 +342,7 @@ function createTagList(rawTags) {
 
     tags.forEach((tag) => {
         const item = document.createElement("span");
-        item.className = `art-window__tag ${getRandomTagColorClass()}`;
+        item.className = `art-window__tag ${getTagColorClass(tag)}`;
         item.textContent = tag;
         list.appendChild(item);
     });
@@ -348,10 +361,17 @@ function normaliseTags(tags) {
         .slice(0, 3);
 }
 
-function getRandomTagColorClass() {
+function getTagColorClass(tag) {
+    const key = `${tag}`.trim().toLowerCase();
     const palette = ["red", "green", "blue"];
-    const choice = palette[Math.floor(Math.random() * palette.length)];
-    return `art-window__tag--${choice}`;
+
+    if (!tagColorAssignments.has(key)) {
+        const nextIndex = tagColorAssignments.size % palette.length;
+        tagColorAssignments.set(key, palette[nextIndex]);
+    }
+
+    const color = tagColorAssignments.get(key) ?? palette[0];
+    return `art-window__tag--${color}`;
 }
 
 function setupDescriptionTooltip(windowElement, description, toggleButton) {
@@ -879,13 +899,52 @@ function ensureWindowState(configId) {
             previewInitialised: false,
             previewElement: null,
             videoHoverCleanup: null,
-            videoHoverAttached: false
+            videoHoverAttached: false,
+            reopenTimeoutId: null
         };
 
         windowStates.set(configId, state);
     }
 
     return windowStates.get(configId);
+}
+
+function toggleWindowFullscreen(windowElement, configId) {
+    if (!windowElement || !configId) {
+        return;
+    }
+
+    if (windowElement.classList.contains("is-active")) {
+        closeWindow(windowElement, configId);
+        return;
+    }
+
+    openWindow(windowElement, configId);
+}
+
+function temporarilyCloseWindow(windowElement, configId) {
+    const state = ensureWindowState(configId);
+    if (!state || !windowElement) {
+        return;
+    }
+
+    if (state.reopenTimeoutId !== null) {
+        clearTimeout(state.reopenTimeoutId);
+        state.reopenTimeoutId = null;
+    }
+
+    closeWindow(windowElement, configId);
+    windowElement.hidden = true;
+
+    state.reopenTimeoutId = window.setTimeout(() => {
+        state.reopenTimeoutId = null;
+        if (!windowElement.isConnected) {
+            return;
+        }
+
+        windowElement.hidden = false;
+        syncBodyActiveState();
+    }, 8000);
 }
 
 function openWindow(windowElement, configId) {
@@ -904,6 +963,10 @@ function openWindow(windowElement, configId) {
     }
 
     const state = ensureWindowState(configId);
+    if (state.reopenTimeoutId !== null) {
+        clearTimeout(state.reopenTimeoutId);
+        state.reopenTimeoutId = null;
+    }
     const viewport = windowElement.querySelector(".art-window__viewport");
     if (!viewport) {
         return;
@@ -922,11 +985,6 @@ function openWindow(windowElement, configId) {
     }
 
     initialiseLivePreview(windowElement, state);
-
-    const closeButton = windowElement.querySelector(".art-window__control");
-    if (closeButton) {
-        closeButton.hidden = false;
-    }
 
     if (config.type === "scene" && !state.canvas && config.useCanvas !== false) {
         state.canvas = document.createElement("canvas");
@@ -1096,11 +1154,6 @@ function closeWindow(windowElement, configId) {
     const viewport = windowElement.querySelector(".art-window__viewport");
     if (viewport && state?.errorElement) {
         state.errorElement.hidden = true;
-    }
-
-    const closeButton = windowElement.querySelector(".art-window__control");
-    if (closeButton) {
-        closeButton.hidden = true;
     }
 
     syncBodyActiveState();
