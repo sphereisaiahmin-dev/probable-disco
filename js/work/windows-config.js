@@ -25,18 +25,5 @@ export const workWindowConfig = [
         initialSize: { width: 520, height: 320 },
         hint: "preview crsvr",
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(0,0,0,0.25))"
-    },
-    {
-        id: "browser-instrument",
-        title: "browser instrument",
-        tags: ["code sandbox", "live build"],
-        description: "embedded sandbox to share the browser-native instrument builds",
-        type: "embed",
-        embedUrl: "https://codesandbox.io/embed/new?fontsize=14&hidenavigation=1&theme=dark",
-        initialPosition: { x: 220, y: 320 },
-        initialSize: { width: 520, height: 360 },
-        hint: "open tool",
-        allow: "clipboard-write; fullscreen; geolocation",
-        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.12), rgba(64,128,255,0.18))"
     }
 ];

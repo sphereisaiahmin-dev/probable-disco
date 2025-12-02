@@ -1,5 +1,4 @@
 import { createAsciiScene } from "./scenes/asciiScene.js";
-import { createTestArtScene } from "./scenes/testArtScene.js";
 import { createWebcamImpressionsScene } from "./scenes/webcamImpressionsScene.js";
 
 const registry = {
@@ -7,11 +6,6 @@ const registry = {
         factory: createAsciiScene,
         tags: ["webcam", "instance", "mediapipe"],
         description: "live webcam stream rendered through mediapipe into ascii shapes to show the capture pipeline"
-    },
-    "test-art": {
-        factory: createTestArtScene,
-        tags: ["prototype", "canvas"],
-        description: "lightweight canvas test bed for quick visual experiments"
     },
     "webcam-impressions": {
         factory: createWebcamImpressionsScene,
