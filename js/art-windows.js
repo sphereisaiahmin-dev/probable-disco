@@ -830,12 +830,15 @@ function registerFloatingWindow(windowElement) {
         return;
     }
 
+    const baseSpeed = 0.00025 + Math.random() * 0.00035;
     floatingWindows.add(windowElement);
     floatingStates.set(windowElement, {
         amplitudeX: 3 + Math.random() * 6,
         amplitudeY: 2 + Math.random() * 5,
-        speed: 0.00035 + Math.random() * 0.00025,
-        phase: Math.random() * Math.PI * 2
+        speedX: baseSpeed + Math.random() * 0.0002,
+        speedY: baseSpeed * (1.15 + Math.random() * 0.5),
+        phaseX: Math.random() * Math.PI * 2,
+        phaseY: Math.random() * Math.PI * 2
     });
     ensureFloatingAnimation();
 }
@@ -869,8 +872,8 @@ function ensureFloatingAnimation() {
                 return;
             }
 
-            const offsetX = Math.sin(timestamp * state.speed + state.phase) * state.amplitudeX;
-            const offsetY = Math.cos(timestamp * state.speed * 1.18 + state.phase) * state.amplitudeY;
+            const offsetX = Math.sin(timestamp * state.speedX + state.phaseX) * state.amplitudeX;
+            const offsetY = Math.cos(timestamp * state.speedY + state.phaseY) * state.amplitudeY;
             windowElement.style.setProperty("--window-float-x", `${offsetX.toFixed(2)}px`);
             windowElement.style.setProperty("--window-float-y", `${offsetY.toFixed(2)}px`);
         });
