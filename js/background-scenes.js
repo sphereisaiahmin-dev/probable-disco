@@ -50,16 +50,12 @@ function initialize() {
             "CABLES.jsLoaded",
             () => {
                 runtimeReady = true;
-                instantiateDarkPatch();
-                ensureLightPatch();
-                applyTheme(activeTheme);
+                applyThemeWhenVisible();
             },
             { once: true }
         );
     } else {
-        instantiateDarkPatch();
-        ensureLightPatch();
-        applyTheme(activeTheme);
+        applyThemeWhenVisible();
     }
 
     document.addEventListener("themechange", (event) => {
@@ -69,7 +65,7 @@ function initialize() {
         }
         activeTheme = theme;
         updateCanvasState(activeTheme);
-        applyTheme(activeTheme);
+        applyThemeWhenVisible();
     });
 
     window.addEventListener("storage", (event) => {
@@ -82,7 +78,19 @@ function initialize() {
         }
         activeTheme = theme;
         updateCanvasState(activeTheme);
+        applyThemeWhenVisible();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            pauseAllPatches();
+            return;
+        }
         applyTheme(activeTheme);
+    });
+
+    window.addEventListener("pagehide", () => {
+        pauseAllPatches();
     });
 
     function normalizeTheme(theme) {
@@ -106,11 +114,11 @@ function initialize() {
 
     function instantiateDarkPatch() {
         if (darkPatch || !runtimeReady) {
-            return;
+            return darkPatch;
         }
         const canvas = canvases.get(THEME_DARK);
         if (!canvas) {
-            return;
+            return null;
         }
         try {
             darkPatch = new window.CABLES.Patch({
@@ -126,6 +134,7 @@ function initialize() {
         } catch (error) {
             console.error("background scenes: failed to start dark patch", error);
         }
+        return darkPatch;
     }
 
     function ensureLightPatch() {
@@ -174,6 +183,10 @@ function initialize() {
             if (promise) {
                 promise
                     .then((patch) => {
+                        if (document.visibilityState === "hidden" || activeTheme !== THEME_LIGHT) {
+                            patch?.pause?.();
+                            return;
+                        }
                         patch?.resume?.();
                         darkPatch?.pause?.();
                         exportEvent(canvases.get(THEME_LIGHT) ?? null);
@@ -183,10 +196,26 @@ function initialize() {
                     });
             }
         } else {
-            darkPatch?.resume?.();
+            const patch = instantiateDarkPatch();
+            if (document.visibilityState === "hidden") {
+                return;
+            }
+            patch?.resume?.();
             lightPatch?.pause?.();
             exportEvent(canvases.get(THEME_DARK) ?? null);
         }
+    }
+
+    function applyThemeWhenVisible() {
+        if (document.visibilityState === "hidden") {
+            return;
+        }
+        applyTheme(activeTheme);
+    }
+
+    function pauseAllPatches() {
+        darkPatch?.pause?.();
+        lightPatch?.pause?.();
     }
 
     function logError(mode) {
