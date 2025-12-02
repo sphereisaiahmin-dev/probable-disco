@@ -30,7 +30,7 @@ const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
 const WINDOW_EDGE_GUTTER = 24;
 const EMBED_FALLBACK_TIMEOUT = 6000;
-const WINDOW_REVEAL_DELAY = 180;
+const WINDOW_REVEAL_DELAY = 120;
 const VIDEO_DEFAULT_RATE = 1;
 const VIDEO_HOVER_RATE = 1.5;
 
@@ -1605,12 +1605,12 @@ function revealLayer(layerKey, { immediate = false } = {}) {
     state.isAnimating = true;
     const delayUnit = immediate ? 0 : WINDOW_REVEAL_DELAY;
 
-    state.windows.forEach((windowEl, index) => {
+    hiddenWindows.forEach((windowEl, index) => {
         const delay = delayUnit * index;
         windowEl.style.setProperty("--window-transition-delay", `${delay}ms`);
         setTimeout(() => {
             windowEl.classList.add("is-visible");
-            if (index === state.windows.length - 1) {
+            if (index === hiddenWindows.length - 1) {
                 finishLayerAnimation(state);
             }
         }, delay);
