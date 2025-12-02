@@ -30,7 +30,7 @@ const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
 const WINDOW_EDGE_GUTTER = 24;
 const EMBED_FALLBACK_TIMEOUT = 6000;
-const WINDOW_REVEAL_DELAY = 120;
+const WINDOW_REVEAL_DELAY = 200;
 const VIDEO_DEFAULT_RATE = 1;
 const VIDEO_HOVER_RATE = 1.5;
 
@@ -41,15 +41,19 @@ let floatingAnimationFrame = null;
 
 bootstrapLayers();
 
+const INITIAL_REVEAL_DELAY = 500;
+
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
         bootstrapLayers();
-        revealLayer(document.documentElement.dataset.page ?? null);
+        window.setTimeout(() => {
+            revealLayer(document.documentElement.dataset.page ?? null);
+        }, INITIAL_REVEAL_DELAY);
     });
 } else {
-    requestAnimationFrame(() => {
+    window.setTimeout(() => {
         revealLayer(document.documentElement.dataset.page ?? null);
-    });
+    }, INITIAL_REVEAL_DELAY);
 }
 
 document.addEventListener("shell:navigation", (event) => {
@@ -902,7 +906,7 @@ function ensureWindowState(configId) {
             videoHoverCleanup: null,
             videoHoverAttached: false,
             reopenTimeoutId: null,
-            shouldRestoreActive: false
+            shouldRestoreContent: false
         };
 
         windowStates.set(configId, state);
@@ -924,6 +928,54 @@ function toggleWindowFullscreen(windowElement, configId) {
     openWindow(windowElement, configId);
 }
 
+function prepareWindowContent(windowElement, state) {
+    const viewport = windowElement.querySelector(".art-window__viewport");
+    if (!viewport) {
+        return false;
+    }
+
+    const contentHost = viewport.querySelector(".art-window__content");
+    const previewElement = viewport.querySelector(".art-window__preview");
+
+    if (!state.viewportHost) {
+        state.viewportHost = viewport;
+    }
+    if (!state.viewport && contentHost) {
+        state.viewport = contentHost;
+    }
+    if (!state.previewElement && previewElement) {
+        state.previewElement = previewElement;
+    }
+
+    initialiseLivePreview(windowElement, state);
+
+    if (state.config.type === "scene" && !state.canvas && state.config.useCanvas !== false) {
+        state.canvas = document.createElement("canvas");
+        state.canvas.className = "art-window__canvas";
+        state.viewport?.appendChild(state.canvas);
+    }
+
+    if (state.errorElement) {
+        state.errorElement.hidden = true;
+    }
+
+    return true;
+}
+
+function mountWindowContent(windowElement, state, { allowInactive = false } = {}) {
+    if (!state) {
+        return;
+    }
+
+    if (state.config.type === "scene") {
+        mountScene(state, windowElement, state.config.uid, { allowInactive });
+    } else if (state.config.videoSrc) {
+        ensureVideoPlayback(state);
+    } else {
+        mountEmbed(state);
+    }
+}
+
 function temporarilyCloseWindow(windowElement, configId) {
     const state = ensureWindowState(configId);
     if (!state || !windowElement) {
@@ -935,7 +987,7 @@ function temporarilyCloseWindow(windowElement, configId) {
         state.reopenTimeoutId = null;
     }
 
-    state.shouldRestoreActive = windowElement.classList.contains("is-active");
+    state.shouldRestoreContent = windowElement.classList.contains("is-active");
 
     closeWindow(windowElement, configId);
     teardownWindowContent(windowElement, state);
@@ -961,13 +1013,13 @@ function restoreWindowContent(windowElement, state) {
         return;
     }
 
-    initialiseLivePreview(windowElement, state);
+    if (!prepareWindowContent(windowElement, state)) {
+        return;
+    }
 
-    if (state.shouldRestoreActive) {
-        state.shouldRestoreActive = false;
-        requestAnimationFrame(() => {
-            openWindow(windowElement, state.config.uid);
-        });
+    if (state.shouldRestoreContent) {
+        state.shouldRestoreContent = false;
+        mountWindowContent(windowElement, state, { allowInactive: true });
         return;
     }
 
@@ -1053,33 +1105,8 @@ function openWindow(windowElement, configId) {
         clearTimeout(state.reopenTimeoutId);
         state.reopenTimeoutId = null;
     }
-    const viewport = windowElement.querySelector(".art-window__viewport");
-    if (!viewport) {
+    if (!prepareWindowContent(windowElement, state)) {
         return;
-    }
-
-    const contentHost = viewport.querySelector(".art-window__content");
-    const previewElement = viewport.querySelector(".art-window__preview");
-    if (!state.viewportHost) {
-        state.viewportHost = viewport;
-    }
-    if (!state.viewport && contentHost) {
-        state.viewport = contentHost;
-    }
-    if (!state.previewElement && previewElement) {
-        state.previewElement = previewElement;
-    }
-
-    initialiseLivePreview(windowElement, state);
-
-    if (config.type === "scene" && !state.canvas && config.useCanvas !== false) {
-        state.canvas = document.createElement("canvas");
-        state.canvas.className = "art-window__canvas";
-        state.viewport?.appendChild(state.canvas);
-    }
-
-    if (state.errorElement) {
-        state.errorElement.hidden = true;
     }
 
     storeWindowOrigin(windowElement);
@@ -1087,18 +1114,7 @@ function openWindow(windowElement, configId) {
     document.body.classList.add("art-window-active");
     applyExpandedPlacement(windowElement, config);
 
-    if (config.type === "scene") {
-        if (!state.mounted) {
-            mountScene(state, windowElement, configId);
-        } else {
-            mountedSceneStates.set(configId, state);
-            resizeScene(state);
-        }
-    } else if (config.videoSrc) {
-        ensureVideoPlayback(state);
-    } else {
-        mountEmbed(state);
-    }
+    mountWindowContent(windowElement, state);
 }
 
 function mountScene(state, windowElement, configId, { allowInactive = false } = {}) {
