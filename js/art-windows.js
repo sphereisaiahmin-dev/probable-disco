@@ -935,6 +935,7 @@ function temporarilyCloseWindow(windowElement, configId) {
 
     closeWindow(windowElement, configId);
     teardownWindowContent(windowElement, state);
+    windowElement.classList.remove("is-visible");
     windowElement.hidden = true;
 
     state.reopenTimeoutId = window.setTimeout(() => {
@@ -944,7 +945,9 @@ function temporarilyCloseWindow(windowElement, configId) {
         }
 
         windowElement.hidden = false;
-        openWindow(windowElement, configId);
+        requestAnimationFrame(() => {
+            windowElement.classList.add("is-visible");
+        });
     }, 10000);
 }
 
