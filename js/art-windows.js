@@ -17,6 +17,7 @@ const windowStates = new Map();
 const mountedSceneStates = new Map();
 const embedPreviewCache = new Map();
 const runtimePreviewCache = new Map();
+const tagColorAssignments = new Map();
 
 let zIndexSeed = 10;
 let listenersAttached = false;
@@ -29,6 +30,7 @@ const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
 const WINDOW_EDGE_GUTTER = 24;
 const EMBED_FALLBACK_TIMEOUT = 6000;
+const WINDOW_REVEAL_DELAY = 200;
 const VIDEO_DEFAULT_RATE = 1;
 const VIDEO_HOVER_RATE = 1.5;
 
@@ -39,15 +41,19 @@ let floatingAnimationFrame = null;
 
 bootstrapLayers();
 
+const INITIAL_REVEAL_DELAY = 500;
+
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
         bootstrapLayers();
-        revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
+        window.setTimeout(() => {
+            revealLayer(document.documentElement.dataset.page ?? null);
+        }, INITIAL_REVEAL_DELAY);
     });
 } else {
-    requestAnimationFrame(() => {
-        revealLayer(document.documentElement.dataset.page ?? null, { immediate: true });
-    });
+    window.setTimeout(() => {
+        revealLayer(document.documentElement.dataset.page ?? null);
+    }, INITIAL_REVEAL_DELAY);
 }
 
 document.addEventListener("shell:navigation", (event) => {
@@ -201,27 +207,60 @@ function createWindowElement(config) {
     const header = document.createElement("header");
     header.className = "art-window__header";
 
+    const heading = document.createElement("div");
+    heading.className = "art-window__heading";
+
     const title = document.createElement("h2");
     title.className = "art-window__title";
     title.textContent = config.title;
-    header.appendChild(title);
+    heading.appendChild(title);
+
+    const descriptionText = (config.description || "").trim();
+
+    const tags = createTagList(config.tags);
+    if (tags) {
+        heading.appendChild(tags);
+    }
 
     const controls = document.createElement("div");
     controls.className = "art-window__controls";
+    controls.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+    });
+
+    let descriptionToggle = null;
+    if (descriptionText) {
+        descriptionToggle = document.createElement("button");
+        descriptionToggle.type = "button";
+        descriptionToggle.className = "art-window__control art-window__control--description";
+        descriptionToggle.textContent = "…";
+        descriptionToggle.setAttribute("aria-label", `toggle description for ${config.title}`);
+        controls.appendChild(descriptionToggle);
+    }
+
+    const fullscreenButton = document.createElement("button");
+    fullscreenButton.type = "button";
+    fullscreenButton.className = "art-window__control art-window__control--fullscreen";
+    fullscreenButton.textContent = "□";
+    fullscreenButton.setAttribute("aria-label", `toggle fullscreen for ${config.title}`);
+    fullscreenButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        toggleWindowFullscreen(windowElement, config.uid);
+    });
+    controls.appendChild(fullscreenButton);
 
     const closeButton = document.createElement("button");
     closeButton.type = "button";
-    closeButton.className = "art-window__control";
-    closeButton.textContent = "close";
+    closeButton.className = "art-window__control art-window__control--close";
+    closeButton.textContent = "×";
     closeButton.setAttribute("aria-label", `close ${config.title}`);
-    closeButton.hidden = true;
-
     closeButton.addEventListener("click", (event) => {
         event.stopPropagation();
-        closeWindow(windowElement, config.uid);
+        temporarilyCloseWindow(windowElement, config.uid);
     });
 
     controls.appendChild(closeButton);
+    header.appendChild(heading);
     header.appendChild(controls);
 
     const viewport = document.createElement("div");
@@ -270,6 +309,7 @@ function createWindowElement(config) {
     enableResizing(windowElement, resizeHandle);
 
     registerFloatingWindow(windowElement);
+    setupDescriptionTooltip(windowElement, descriptionText, descriptionToggle);
 
     windowElement.addEventListener("click", () => {
         if (windowElement.classList.contains("is-active")) {
@@ -294,6 +334,123 @@ function createWindowElement(config) {
     });
 
     return windowElement;
+}
+
+function createTagList(rawTags) {
+    const tags = normaliseTags(rawTags);
+    if (!tags.length) {
+        return null;
+    }
+
+    const list = document.createElement("div");
+    list.className = "art-window__tags";
+
+    tags.forEach((tag) => {
+        const item = document.createElement("span");
+        item.className = `art-window__tag ${getTagColorClass(tag)}`;
+        item.textContent = tag;
+        list.appendChild(item);
+    });
+
+    return list;
+}
+
+function normaliseTags(tags) {
+    if (!Array.isArray(tags)) {
+        return [];
+    }
+
+    return tags
+        .map((tag) => `${tag}`.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+}
+
+function getTagColorClass(tag) {
+    const key = `${tag}`.trim().toLowerCase();
+    const palette = ["red", "green", "blue"];
+
+    if (!tagColorAssignments.has(key)) {
+        const nextIndex = tagColorAssignments.size % palette.length;
+        tagColorAssignments.set(key, palette[nextIndex]);
+    }
+
+    const color = tagColorAssignments.get(key) ?? palette[0];
+    return `art-window__tag--${color}`;
+}
+
+function setupDescriptionTooltip(windowElement, description, toggleButton) {
+    const text = (description || "").trim();
+    if (!text) {
+        return;
+    }
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "art-window__tooltip";
+    tooltip.textContent = text;
+    tooltip.setAttribute("role", "status");
+    tooltip.hidden = true;
+    windowElement.appendChild(tooltip);
+
+    let pinned = false;
+    let hoverTimeout = null;
+
+    const showTooltip = () => {
+        tooltip.hidden = false;
+        tooltip.dataset.visible = "1";
+    };
+
+    const hideTooltip = (force = false) => {
+        if (hoverTimeout !== null) {
+            clearTimeout(hoverTimeout);
+            hoverTimeout = null;
+        }
+        if (pinned && !force) {
+            return;
+        }
+        tooltip.dataset.visible = "0";
+        tooltip.hidden = true;
+    };
+
+    const queueTooltip = () => {
+        if (pinned) {
+            return;
+        }
+        if (hoverTimeout !== null) {
+            return;
+        }
+        hoverTimeout = window.setTimeout(() => {
+            hoverTimeout = null;
+            showTooltip();
+        }, 2000);
+    };
+
+    const togglePinned = () => {
+        pinned = !pinned;
+        toggleButton?.classList.toggle("is-active", pinned);
+        if (pinned) {
+            if (hoverTimeout !== null) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = null;
+            }
+            showTooltip();
+            return;
+        }
+        hideTooltip(true);
+    };
+
+    if (toggleButton) {
+        toggleButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            togglePinned();
+        });
+    }
+
+    windowElement.addEventListener("pointerenter", queueTooltip);
+    windowElement.addEventListener("pointerleave", hideTooltip);
+    windowElement.addEventListener("focusin", queueTooltip);
+    windowElement.addEventListener("focusout", hideTooltip);
+    windowElement.addEventListener("pointerdown", hideTooltip);
 }
 
 function hydrateEmbedPreview(config, preview) {
@@ -673,12 +830,15 @@ function registerFloatingWindow(windowElement) {
         return;
     }
 
+    const baseSpeed = 0.00025 + Math.random() * 0.00035;
     floatingWindows.add(windowElement);
     floatingStates.set(windowElement, {
         amplitudeX: 3 + Math.random() * 6,
         amplitudeY: 2 + Math.random() * 5,
-        speed: 0.00035 + Math.random() * 0.00025,
-        phase: Math.random() * Math.PI * 2
+        speedX: baseSpeed + Math.random() * 0.0002,
+        speedY: baseSpeed * (1.15 + Math.random() * 0.5),
+        phaseX: Math.random() * Math.PI * 2,
+        phaseY: Math.random() * Math.PI * 2
     });
     ensureFloatingAnimation();
 }
@@ -712,8 +872,8 @@ function ensureFloatingAnimation() {
                 return;
             }
 
-            const offsetX = Math.sin(timestamp * state.speed + state.phase) * state.amplitudeX;
-            const offsetY = Math.cos(timestamp * state.speed * 1.18 + state.phase) * state.amplitudeY;
+            const offsetX = Math.sin(timestamp * state.speedX + state.phaseX) * state.amplitudeX;
+            const offsetY = Math.cos(timestamp * state.speedY + state.phaseY) * state.amplitudeY;
             windowElement.style.setProperty("--window-float-x", `${offsetX.toFixed(2)}px`);
             windowElement.style.setProperty("--window-float-y", `${offsetY.toFixed(2)}px`);
         });
@@ -747,13 +907,185 @@ function ensureWindowState(configId) {
             previewInitialised: false,
             previewElement: null,
             videoHoverCleanup: null,
-            videoHoverAttached: false
+            videoHoverAttached: false,
+            reopenTimeoutId: null,
+            shouldRestoreContent: false
         };
 
         windowStates.set(configId, state);
     }
 
     return windowStates.get(configId);
+}
+
+function toggleWindowFullscreen(windowElement, configId) {
+    if (!windowElement || !configId) {
+        return;
+    }
+
+    if (windowElement.classList.contains("is-active")) {
+        closeWindow(windowElement, configId);
+        return;
+    }
+
+    openWindow(windowElement, configId);
+}
+
+function prepareWindowContent(windowElement, state) {
+    const viewport = windowElement.querySelector(".art-window__viewport");
+    if (!viewport) {
+        return false;
+    }
+
+    const contentHost = viewport.querySelector(".art-window__content");
+    const previewElement = viewport.querySelector(".art-window__preview");
+
+    if (!state.viewportHost) {
+        state.viewportHost = viewport;
+    }
+    if (!state.viewport && contentHost) {
+        state.viewport = contentHost;
+    }
+    if (!state.previewElement && previewElement) {
+        state.previewElement = previewElement;
+    }
+
+    initialiseLivePreview(windowElement, state);
+
+    if (state.config.type === "scene" && !state.canvas && state.config.useCanvas !== false) {
+        state.canvas = document.createElement("canvas");
+        state.canvas.className = "art-window__canvas";
+        state.viewport?.appendChild(state.canvas);
+    }
+
+    if (state.errorElement) {
+        state.errorElement.hidden = true;
+    }
+
+    return true;
+}
+
+function mountWindowContent(windowElement, state, { allowInactive = false } = {}) {
+    if (!state) {
+        return;
+    }
+
+    if (state.config.type === "scene") {
+        mountScene(state, windowElement, state.config.uid, { allowInactive });
+    } else if (state.config.videoSrc) {
+        ensureVideoPlayback(state);
+    } else {
+        mountEmbed(state);
+    }
+}
+
+function temporarilyCloseWindow(windowElement, configId) {
+    const state = ensureWindowState(configId);
+    if (!state || !windowElement) {
+        return;
+    }
+
+    if (state.reopenTimeoutId !== null) {
+        clearTimeout(state.reopenTimeoutId);
+        state.reopenTimeoutId = null;
+    }
+
+    state.shouldRestoreContent = windowElement.classList.contains("is-active");
+
+    closeWindow(windowElement, configId);
+    teardownWindowContent(windowElement, state);
+    windowElement.classList.remove("is-visible");
+    windowElement.hidden = true;
+
+    state.reopenTimeoutId = window.setTimeout(() => {
+        state.reopenTimeoutId = null;
+        if (!windowElement.isConnected) {
+            return;
+        }
+
+        windowElement.hidden = false;
+        requestAnimationFrame(() => {
+            windowElement.classList.add("is-visible");
+            restoreWindowContent(windowElement, state);
+        });
+    }, 10000);
+}
+
+function restoreWindowContent(windowElement, state) {
+    if (!windowElement || !state) {
+        return;
+    }
+
+    if (!prepareWindowContent(windowElement, state)) {
+        return;
+    }
+
+    if (state.shouldRestoreContent) {
+        state.shouldRestoreContent = false;
+        mountWindowContent(windowElement, state, { allowInactive: true });
+        return;
+    }
+
+    if (state.config.videoSrc) {
+        ensureVideoPlayback(state);
+    }
+}
+
+function teardownWindowContent(windowElement, state) {
+    if (!state) {
+        return;
+    }
+
+    if (state.embedTimeoutId !== null) {
+        clearTimeout(state.embedTimeoutId);
+        state.embedTimeoutId = null;
+    }
+
+    if (state.config.type === "scene" && state.mounted) {
+        try {
+            state.instance?.unmount?.();
+        } catch (error) {
+            console.error(`failed to unmount scene ${state.config.sceneId}`, error);
+        }
+        state.mounted = false;
+        mountedSceneStates.delete(state.config.uid);
+    }
+
+    if (state.mountPromise) {
+        state.mountPromise = null;
+    }
+
+    if (state.videoHoverCleanup) {
+        state.videoHoverCleanup();
+        state.videoHoverCleanup = null;
+        state.videoHoverAttached = false;
+    }
+
+    if (state.videoElement) {
+        state.videoElement.pause();
+        state.videoElement.removeAttribute("src");
+        if (typeof state.videoElement.load === "function") {
+            state.videoElement.load();
+        }
+        state.videoElement.remove();
+        state.videoElement = null;
+    }
+
+    if (state.iframe) {
+        state.iframe.remove();
+        state.iframe = null;
+    }
+
+    if (state.canvas) {
+        state.canvas.remove();
+        state.canvas = null;
+    }
+
+    state.previewInitialised = false;
+
+    if (!windowElement.classList.contains("is-active")) {
+        syncBodyActiveState();
+    }
 }
 
 function openWindow(windowElement, configId) {
@@ -772,38 +1104,12 @@ function openWindow(windowElement, configId) {
     }
 
     const state = ensureWindowState(configId);
-    const viewport = windowElement.querySelector(".art-window__viewport");
-    if (!viewport) {
+    if (state.reopenTimeoutId !== null) {
+        clearTimeout(state.reopenTimeoutId);
+        state.reopenTimeoutId = null;
+    }
+    if (!prepareWindowContent(windowElement, state)) {
         return;
-    }
-
-    const contentHost = viewport.querySelector(".art-window__content");
-    const previewElement = viewport.querySelector(".art-window__preview");
-    if (!state.viewportHost) {
-        state.viewportHost = viewport;
-    }
-    if (!state.viewport && contentHost) {
-        state.viewport = contentHost;
-    }
-    if (!state.previewElement && previewElement) {
-        state.previewElement = previewElement;
-    }
-
-    initialiseLivePreview(windowElement, state);
-
-    const closeButton = windowElement.querySelector(".art-window__control");
-    if (closeButton) {
-        closeButton.hidden = false;
-    }
-
-    if (config.type === "scene" && !state.canvas && config.useCanvas !== false) {
-        state.canvas = document.createElement("canvas");
-        state.canvas.className = "art-window__canvas";
-        state.viewport?.appendChild(state.canvas);
-    }
-
-    if (state.errorElement) {
-        state.errorElement.hidden = true;
     }
 
     storeWindowOrigin(windowElement);
@@ -811,18 +1117,7 @@ function openWindow(windowElement, configId) {
     document.body.classList.add("art-window-active");
     applyExpandedPlacement(windowElement, config);
 
-    if (config.type === "scene") {
-        if (!state.mounted) {
-            mountScene(state, windowElement, configId);
-        } else {
-            mountedSceneStates.set(configId, state);
-            resizeScene(state);
-        }
-    } else if (config.videoSrc) {
-        ensureVideoPlayback(state);
-    } else {
-        mountEmbed(state);
-    }
+    mountWindowContent(windowElement, state);
 }
 
 function mountScene(state, windowElement, configId, { allowInactive = false } = {}) {
@@ -964,11 +1259,6 @@ function closeWindow(windowElement, configId) {
     const viewport = windowElement.querySelector(".art-window__viewport");
     if (viewport && state?.errorElement) {
         state.errorElement.hidden = true;
-    }
-
-    const closeButton = windowElement.querySelector(".art-window__control");
-    if (closeButton) {
-        closeButton.hidden = true;
     }
 
     syncBodyActiveState();
@@ -1332,14 +1622,14 @@ function revealLayer(layerKey, { immediate = false } = {}) {
     }
 
     state.isAnimating = true;
-    const delayUnit = immediate ? 0 : 110;
+    const delayUnit = immediate ? 0 : WINDOW_REVEAL_DELAY;
 
-    state.windows.forEach((windowEl, index) => {
+    hiddenWindows.forEach((windowEl, index) => {
         const delay = delayUnit * index;
         windowEl.style.setProperty("--window-transition-delay", `${delay}ms`);
         setTimeout(() => {
             windowEl.classList.add("is-visible");
-            if (index === state.windows.length - 1) {
+            if (index === hiddenWindows.length - 1) {
                 finishLayerAnimation(state);
             }
         }, delay);

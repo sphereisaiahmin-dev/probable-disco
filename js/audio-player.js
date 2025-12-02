@@ -118,6 +118,38 @@
         return button;
     }
 
+    function createParabolicTranslator(min, max, neutral) {
+        const clamp01 = (value) => Math.min(1, Math.max(0, value));
+        const lowerSpan = Math.max(0.0001, neutral - min);
+        const upperSpan = Math.max(0.0001, max - neutral);
+
+        return {
+            toActual(value) {
+                const normalized = clamp01(Number(value));
+                if (!Number.isFinite(normalized)) {
+                    return neutral;
+                }
+
+                const centered = normalized * 2 - 1;
+                const curved = centered * Math.abs(centered);
+                const span = curved >= 0 ? upperSpan : lowerSpan;
+                return neutral + curved * span;
+            },
+            toUi(value) {
+                const numericValue = Number(value);
+                if (!Number.isFinite(numericValue)) {
+                    return 0.5;
+                }
+
+                const delta = numericValue - neutral;
+                const span = delta >= 0 ? upperSpan : lowerSpan;
+                const normalized = Math.max(-1, Math.min(1, delta / span));
+                const curved = Math.sign(normalized) * Math.sqrt(Math.abs(normalized));
+                return clamp01((curved + 1) / 2);
+            }
+        };
+    }
+
     function restoreState() {
         try {
             const raw = sessionStorage.getItem(STORAGE_KEY);
@@ -311,6 +343,7 @@
 
         const transport = document.createElement("div");
         transport.className = "audio-player__transport";
+
         transport.append(dspModule, controls);
 
         footer.append(timeline, transport);
@@ -370,11 +403,27 @@
 
         const RATE_DEFAULT = 1;
         const FILTER_DEFAULT = 0;
+        const rateTranslator = createParabolicTranslator(0.5, 1.5, RATE_DEFAULT);
+        const filterTranslator = createParabolicTranslator(-1, 1, FILTER_DEFAULT);
+
+        const mobileMediaQuery = window.matchMedia("(max-width: 640px)");
+        let isMobileLayout = mobileMediaQuery.matches;
+
+        let currentRateValue = RATE_DEFAULT;
+        let currentFilterValue = FILTER_DEFAULT;
+        let hasStartedPlayback = false;
 
         function setPlaybackRate(rate) {
             const nextRate = Number.isFinite(rate) && rate > 0 ? rate : RATE_DEFAULT;
-            audio.playbackRate = nextRate;
-            audio.defaultPlaybackRate = nextRate;
+
+            if (audio.playbackRate !== nextRate) {
+                audio.playbackRate = nextRate;
+            }
+
+            // Updating defaultPlaybackRate mid-playback can reset media on some mobile browsers.
+            if ((audio.paused || !hasStartedPlayback) && audio.defaultPlaybackRate !== nextRate) {
+                audio.defaultPlaybackRate = nextRate;
+            }
 
             if ("preservesPitch" in audio) {
                 audio.preservesPitch = false;
@@ -389,13 +438,56 @@
             return nextRate;
         }
 
-        function resetDspParameters() {
-            rateSlider.value = String(RATE_DEFAULT);
-            const appliedRate = setPlaybackRate(RATE_DEFAULT);
-            updateRateDisplay(appliedRate);
+        function resolveRateValue(rawValue) {
+            const numericValue = Number(rawValue);
+            if (Number.isNaN(numericValue)) {
+                return null;
+            }
 
-            filterSlider.value = String(FILTER_DEFAULT);
-            applyFilterValue(FILTER_DEFAULT);
+            return isMobileLayout ? rateTranslator.toActual(numericValue) : numericValue;
+        }
+
+        function resolveFilterValue(rawValue) {
+            const numericValue = Number(rawValue);
+            if (Number.isNaN(numericValue)) {
+                return null;
+            }
+
+            return isMobileLayout ? filterTranslator.toActual(numericValue) : numericValue;
+        }
+
+        function applyRateValue(rate, { updateSlider = true } = {}) {
+            const appliedRate = setPlaybackRate(rate);
+            currentRateValue = appliedRate;
+
+            if (updateSlider) {
+                const uiValue = isMobileLayout ? rateTranslator.toUi(appliedRate) : appliedRate;
+                rateSlider.value = formatSliderValue(uiValue);
+            }
+
+            updateRateDisplay(appliedRate);
+            return appliedRate;
+        }
+
+        function applyFilterValueWithUi(value, { updateSlider = true, ensureGraph = false } = {}) {
+            const nextValue = Number.isFinite(value) ? value : FILTER_DEFAULT;
+            currentFilterValue = nextValue;
+
+            if (updateSlider) {
+                const uiValue = isMobileLayout ? filterTranslator.toUi(nextValue) : nextValue;
+                filterSlider.value = formatSliderValue(uiValue);
+            }
+
+            if (ensureGraph) {
+                ensureAudioContext();
+            }
+
+            applyFilterValue(nextValue);
+        }
+
+        function resetDspParameters() {
+            applyRateValue(RATE_DEFAULT);
+            applyFilterValueWithUi(FILTER_DEFAULT);
         }
 
         let tracks = [];
@@ -475,6 +567,55 @@
 
             rateValue.textContent = `${rateFormatter.format(rate)}x`;
         }
+
+        function formatSliderValue(value) {
+            const numericValue = Number(value);
+            if (!Number.isFinite(numericValue)) {
+                return "0";
+            }
+
+            return numericValue.toFixed(3);
+        }
+
+        function syncSliderBounds() {
+            if (isMobileLayout) {
+                rateSlider.min = "0";
+                rateSlider.max = "1";
+                rateSlider.step = "0.001";
+                filterSlider.min = "0";
+                filterSlider.max = "1";
+                filterSlider.step = "0.001";
+                return;
+            }
+
+            rateSlider.min = "0.5";
+            rateSlider.max = "1.5";
+            rateSlider.step = "0.01";
+            filterSlider.min = "-1";
+            filterSlider.max = "1";
+            filterSlider.step = "0.01";
+        }
+
+        function syncSliderValuesFromState() {
+            const rateUiValue = isMobileLayout ? rateTranslator.toUi(currentRateValue) : currentRateValue;
+            const filterUiValue = isMobileLayout ? filterTranslator.toUi(currentFilterValue) : currentFilterValue;
+
+            rateSlider.value = formatSliderValue(rateUiValue);
+            filterSlider.value = formatSliderValue(filterUiValue);
+        }
+
+        function setMobileLayoutState(nextIsMobile) {
+            isMobileLayout = Boolean(nextIsMobile);
+            footer.classList.toggle("audio-player--mobile", isMobileLayout);
+            syncSliderBounds();
+            syncSliderValuesFromState();
+        }
+
+        setMobileLayoutState(isMobileLayout);
+
+        mobileMediaQuery.addEventListener("change", (event) => {
+            setMobileLayoutState(event.matches);
+        });
 
         function computeFilterFrequencies(value) {
             const numericValue = Number(value);
@@ -843,6 +984,7 @@
             audio
                 .play()
                 .then(() => {
+                    hasStartedPlayback = true;
                     startVisualizer();
                     updatePlayButton();
                     queueStateSave();
@@ -902,23 +1044,21 @@
         resetDspParameters();
 
         rateSlider.addEventListener("input", (event) => {
-            const rate = Number(event.target.value);
-            if (Number.isNaN(rate) || rate <= 0) {
+            const rate = resolveRateValue(event.target.value);
+            if (!Number.isFinite(rate) || rate <= 0) {
                 return;
             }
 
-            const appliedRate = setPlaybackRate(rate);
-            updateRateDisplay(appliedRate);
+            applyRateValue(rate, { updateSlider: false });
         });
 
         filterSlider.addEventListener("input", (event) => {
-            const value = Number(event.target.value);
-            if (Number.isNaN(value)) {
+            const value = resolveFilterValue(event.target.value);
+            if (!Number.isFinite(value)) {
                 return;
             }
 
-            ensureAudioContext();
-            applyFilterValue(value);
+            applyFilterValueWithUi(value, { updateSlider: false, ensureGraph: true });
         });
 
         prevButton.addEventListener("click", () => {
