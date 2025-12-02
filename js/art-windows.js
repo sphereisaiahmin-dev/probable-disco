@@ -236,7 +236,7 @@ function createWindowElement(config) {
     const fullscreenButton = document.createElement("button");
     fullscreenButton.type = "button";
     fullscreenButton.className = "art-window__control art-window__control--fullscreen";
-    fullscreenButton.textContent = "fullscreen";
+    fullscreenButton.textContent = "□";
     fullscreenButton.setAttribute("aria-label", `toggle fullscreen for ${config.title}`);
     fullscreenButton.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -247,7 +247,7 @@ function createWindowElement(config) {
     const closeButton = document.createElement("button");
     closeButton.type = "button";
     closeButton.className = "art-window__control art-window__control--close";
-    closeButton.textContent = "close";
+    closeButton.textContent = "×";
     closeButton.setAttribute("aria-label", `close ${config.title}`);
     closeButton.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -934,6 +934,7 @@ function temporarilyCloseWindow(windowElement, configId) {
     }
 
     closeWindow(windowElement, configId);
+    teardownWindowContent(windowElement, state);
     windowElement.hidden = true;
 
     state.reopenTimeoutId = window.setTimeout(() => {
@@ -943,8 +944,65 @@ function temporarilyCloseWindow(windowElement, configId) {
         }
 
         windowElement.hidden = false;
+        openWindow(windowElement, configId);
+    }, 10000);
+}
+
+function teardownWindowContent(windowElement, state) {
+    if (!state) {
+        return;
+    }
+
+    if (state.embedTimeoutId !== null) {
+        clearTimeout(state.embedTimeoutId);
+        state.embedTimeoutId = null;
+    }
+
+    if (state.config.type === "scene" && state.mounted) {
+        try {
+            state.instance?.unmount?.();
+        } catch (error) {
+            console.error(`failed to unmount scene ${state.config.sceneId}`, error);
+        }
+        state.mounted = false;
+        mountedSceneStates.delete(state.config.uid);
+    }
+
+    if (state.mountPromise) {
+        state.mountPromise = null;
+    }
+
+    if (state.videoHoverCleanup) {
+        state.videoHoverCleanup();
+        state.videoHoverCleanup = null;
+        state.videoHoverAttached = false;
+    }
+
+    if (state.videoElement) {
+        state.videoElement.pause();
+        state.videoElement.removeAttribute("src");
+        if (typeof state.videoElement.load === "function") {
+            state.videoElement.load();
+        }
+        state.videoElement.remove();
+        state.videoElement = null;
+    }
+
+    if (state.iframe) {
+        state.iframe.remove();
+        state.iframe = null;
+    }
+
+    if (state.canvas) {
+        state.canvas.remove();
+        state.canvas = null;
+    }
+
+    state.previewInitialised = false;
+
+    if (!windowElement.classList.contains("is-active")) {
         syncBodyActiveState();
-    }, 8000);
+    }
 }
 
 function openWindow(windowElement, configId) {
