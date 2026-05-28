@@ -40,16 +40,22 @@ function copyFile(sourceFile, destinationFile) {
     fs.copyFileSync(sourceFile, destinationFile);
 }
 
-function buildPublicAssets() {
-    resetDirectory(publicDir);
+function buildPublicAssets(targetDir = publicDir) {
+    resetDirectory(targetDir);
 
-    copyTargets.forEach(({ from, to }) => copyDirectory(from, to));
-    directCopies.forEach(({ from, to }) => copyFile(from, to));
+    copyTargets.forEach(({ from, to }) => {
+        const relativeTarget = path.relative(publicDir, to);
+        copyDirectory(from, path.join(targetDir, relativeTarget));
+    });
+    directCopies.forEach(({ from, to }) => {
+        const relativeTarget = path.relative(publicDir, to);
+        copyFile(from, path.join(targetDir, relativeTarget));
+    });
 
     return {
-        publicDir,
-        copiedDirectories: copyTargets.map(({ to }) => path.relative(projectRoot, to)),
-        copiedFiles: directCopies.map(({ to }) => path.relative(projectRoot, to))
+        publicDir: targetDir,
+        copiedDirectories: copyTargets.map(({ to }) => path.relative(publicDir, to)),
+        copiedFiles: directCopies.map(({ to }) => path.relative(publicDir, to))
     };
 }
 
