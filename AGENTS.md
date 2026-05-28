@@ -23,6 +23,7 @@
 ## Vercel deployment notes
 - Production traffic is served directly by the Express app in `server.js`, with Vercel using that file as the application entrypoint.
 - Vercel request routing is handled through `api/index.js` plus the rewrite rule in `vercel.json`, which sends app routes to the Express function while leaving `public/**` assets on the edge network.
+- Keep the rewrite exclusions aligned with the static asset roots (`/css`, `/js`, `/lightmode`, `/assets`, `/screenshot.png`, `/favicon.ico`) so page requests hit Express while browser assets stay cacheable on Vercel's edge network.
 - Vercel does not serve assets from `express.static()` paths outside `public/**`, so every browser-facing asset must be generated into `public/` before deploy.
 - `npm run build` (implemented in `build-assets.js`) recreates `public/` and copies the required runtime assets:
   - `css/**` -> `public/css/**`

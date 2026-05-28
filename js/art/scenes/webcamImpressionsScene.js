@@ -24,7 +24,7 @@ export function createWebcamImpressionsScene() {
             iframe.setAttribute("title", "cables.gl webcam impressions");
             iframe.setAttribute("frameborder", "0");
             iframe.setAttribute("allowfullscreen", "true");
-            iframe.loading = "lazy";
+            iframe.loading = "eager";
             iframe.referrerPolicy = "no-referrer";
 
             console.info("[impressions] embedding remote scene", { src: IFRAME_SRC });

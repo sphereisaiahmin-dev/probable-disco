@@ -23,7 +23,7 @@ export function createAsciiScene() {
             iframe.setAttribute("title", "ASCII scene from cables.gl");
             iframe.setAttribute("frameborder", "0");
             iframe.setAttribute("allowfullscreen", "true");
-            iframe.loading = "lazy";
+            iframe.loading = "eager";
             iframe.referrerPolicy = "no-referrer";
 
             console.info("[ascii] embedding remote scene", { src: IFRAME_SRC });

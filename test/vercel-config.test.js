@@ -15,7 +15,11 @@ test('vercel config routes traffic through the Express function entrypoint', () 
     assert.equal(vercelConfig.buildCommand, 'npm run build');
     assert.deepEqual(vercelConfig.rewrites, [
         {
-            source: '/(.*)',
+            source: '/api/:path*',
+            destination: '/api'
+        },
+        {
+            source: '/:path((?!css/|js/|lightmode/|assets/|screenshot\\.png|favicon\\.ico).*)',
             destination: '/api'
         }
     ]);
