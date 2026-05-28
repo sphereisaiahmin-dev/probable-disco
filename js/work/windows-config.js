@@ -6,6 +6,7 @@ export const workWindowConfig = [
         description: "blare.db window hosts the live av set that anchors the project portfolio",
         type: "embed",
         embedUrl: "https://www.youtube.com/embed/BXqkB73kWzo?si=rFhJPPzajxmOFdQG&rel=0&modestbranding=1&playsinline=1",
+        thumbnail: "https://i.ytimg.com/vi/BXqkB73kWzo/hqdefault.jpg",
         initialPosition: { x: 160, y: 160 },
         initialSize: { width: 520, height: 320 },
         hint: "watch blare.db",

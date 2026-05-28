@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/:path((?!css/|js/|lightmode/|assets/|screenshot\\.png|favicon\\.ico).*)",
+      "destination": "/api"
+    }
+  ]
+}

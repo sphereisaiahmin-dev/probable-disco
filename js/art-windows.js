@@ -15,7 +15,6 @@ const layerRegistry = new Map();
 const initialisedLayers = new WeakSet();
 const windowStates = new Map();
 const mountedSceneStates = new Map();
-const embedPreviewCache = new Map();
 const runtimePreviewCache = new Map();
 const tagColorAssignments = new Map();
 
@@ -30,7 +29,7 @@ const ACTIVE_MIN_WIDTH = 480;
 const ACTIVE_MIN_HEIGHT = 340;
 const WINDOW_EDGE_GUTTER = 24;
 const EMBED_FALLBACK_TIMEOUT = 6000;
-const WINDOW_REVEAL_DELAY = 200;
+const WINDOW_REVEAL_DELAY = 90;
 const VIDEO_DEFAULT_RATE = 1;
 const VIDEO_HOVER_RATE = 1.5;
 
@@ -41,7 +40,7 @@ let floatingAnimationFrame = null;
 
 bootstrapLayers();
 
-const INITIAL_REVEAL_DELAY = 500;
+const INITIAL_REVEAL_DELAY = 120;
 
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
@@ -283,7 +282,6 @@ function createWindowElement(config) {
     state.viewportHost = viewport;
     state.viewport = contentHost;
     state.previewElement = preview;
-    initialiseLivePreview(windowElement, state);
 
     if (config.hint) {
         const hint = document.createElement("span");
@@ -292,8 +290,8 @@ function createWindowElement(config) {
         viewport.appendChild(hint);
     }
 
-    if (config.type === "embed" && !runtimePreviewApplied) {
-        hydrateEmbedPreview(config, preview);
+    if (!runtimePreviewApplied) {
+        hydrateWindowPreview(config, preview);
     }
 
     const resizeHandle = document.createElement("button");
@@ -453,43 +451,16 @@ function setupDescriptionTooltip(windowElement, description, toggleButton) {
     windowElement.addEventListener("pointerdown", hideTooltip);
 }
 
-function hydrateEmbedPreview(config, preview) {
-    if (!preview) {
+function hydrateWindowPreview(config, preview) {
+    if (!preview || !config) {
         return;
     }
 
-    if (applyRuntimePreview(config, preview)) {
-        return;
-    }
-
-    if (config.thumbnail) {
-        preview.style.backgroundImage = `url(${config.thumbnail})`;
+    const previewAsset = config.thumbnail || config.poster || null;
+    if (previewAsset) {
+        preview.style.backgroundImage = `url(${previewAsset})`;
         preview.classList.add("has-image");
-        return;
     }
-
-    if (!config.embedUrl) {
-        return;
-    }
-
-    const cacheKey = config.embedUrl;
-    if (!embedPreviewCache.has(cacheKey)) {
-        embedPreviewCache.set(
-            cacheKey,
-            fetch(`https://noembed.com/embed?url=${encodeURIComponent(cacheKey)}`)
-                .then((response) => (response.ok ? response.json() : null))
-                .then((payload) => payload?.thumbnail_url || null)
-                .catch(() => null)
-        );
-    }
-
-    embedPreviewCache.get(cacheKey)?.then((thumbnailUrl) => {
-        if (!thumbnailUrl || !preview.isConnected) {
-            return;
-        }
-        preview.style.backgroundImage = `url(${thumbnailUrl})`;
-        preview.classList.add("has-image");
-    });
 }
 
 function initialiseLivePreview(windowElement, state) {
@@ -502,17 +473,10 @@ function initialiseLivePreview(windowElement, state) {
         state.viewport = host || state.viewportHost;
     }
 
-    if (state.config.type === "scene") {
-        if (state.config.useCanvas !== false && !state.canvas) {
-            state.canvas = document.createElement("canvas");
-            state.canvas.className = "art-window__canvas";
-            state.viewport?.appendChild(state.canvas);
-        }
-        mountScene(state, windowElement, state.config.uid, { allowInactive: true });
-    } else if (state.config.videoSrc) {
-        attachVideoPreview(windowElement, state);
-    } else if (state.config.type === "embed") {
-        mountEmbed(state);
+    if (state.config.type === "scene" && state.config.useCanvas !== false && !state.canvas) {
+        state.canvas = document.createElement("canvas");
+        state.canvas.className = "art-window__canvas";
+        state.viewport?.appendChild(state.canvas);
     }
 
     state.previewInitialised = true;
@@ -529,13 +493,11 @@ function attachVideoPreview(windowElement, state) {
     video.loop = true;
     video.muted = true;
     video.playsInline = true;
-    video.autoplay = true;
-    video.preload = "auto";
+    video.autoplay = false;
+    video.preload = "metadata";
     video.controls = false;
     video.playbackRate = VIDEO_DEFAULT_RATE;
-    if (state.config.poster) {
-        video.poster = state.config.poster;
-    }
+    video.poster = state.config.poster || "";
 
     video.addEventListener(
         "loadeddata",
@@ -970,9 +932,12 @@ function mountWindowContent(windowElement, state, { allowInactive = false } = {}
         return;
     }
 
+    initialiseLivePreview(windowElement, state);
+
     if (state.config.type === "scene") {
         mountScene(state, windowElement, state.config.uid, { allowInactive });
     } else if (state.config.videoSrc) {
+        attachVideoPreview(windowElement, state);
         ensureVideoPlayback(state);
     } else {
         mountEmbed(state);
@@ -1023,11 +988,6 @@ function restoreWindowContent(windowElement, state) {
     if (state.shouldRestoreContent) {
         state.shouldRestoreContent = false;
         mountWindowContent(windowElement, state, { allowInactive: true });
-        return;
-    }
-
-    if (state.config.videoSrc) {
-        ensureVideoPlayback(state);
     }
 }
 
@@ -1182,7 +1142,7 @@ function mountEmbed(state) {
         const iframe = document.createElement("iframe");
         iframe.className = "art-window__iframe";
         iframe.src = state.config.embedUrl;
-        iframe.loading = "lazy";
+        iframe.loading = "eager";
         iframe.title = state.config.title || "embedded window";
         iframe.allowFullscreen = state.config.allowFullscreen !== false;
         iframe.setAttribute(
@@ -1239,13 +1199,12 @@ function closeWindow(windowElement, configId) {
     windowElement.classList.remove("is-active");
     restoreWindowOrigin(windowElement);
 
-    if (state && state.mounted && state.config.type === "scene") {
-        mountedSceneStates.set(configId, state);
-        resizeScene(state);
+    if (state?.config.type === "scene") {
+        teardownWindowContent(windowElement, state);
     }
 
     if (state?.videoElement) {
-        ensureVideoPlayback(state);
+        state.videoElement.pause();
     }
 
     if (state) {
