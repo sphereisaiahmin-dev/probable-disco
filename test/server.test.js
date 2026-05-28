@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const request = require('supertest');
 
+const { buildPublicAssets } = require('../build-assets');
 const app = require('../server');
 const packageJson = require('../package.json');
 
@@ -11,6 +12,10 @@ function versionedAsset(pathname) {
     const normalised = pathname.startsWith('/') ? pathname : `/${pathname}`;
     return `${normalised}?v=${assetVersion}`;
 }
+
+test.before(() => {
+    buildPublicAssets();
+});
 
 test('serves the shared layout for static routes', async () => {
     const response = await request(app).get('/work').expect(200).expect('Content-Type', /html/);
@@ -43,4 +48,16 @@ test('art route exposes per-page modules', async () => {
     assert.ok(Array.isArray(response.body.page.modules));
     assert.equal(response.body.page.modules.length, 1);
     assert.equal(response.body.page.modules[0], versionedAsset('/js/art-windows.js'));
+});
+
+test('serves generated public assets from stable URLs', async () => {
+    const assetPaths = [
+        '/css/site.css',
+        '/js/patch.js',
+        '/lightmode/js/ops.js',
+        '/assets/lib_images_dot.png',
+        '/screenshot.png'
+    ];
+
+    await Promise.all(assetPaths.map((assetPath) => request(app).get(assetPath).expect(200)));
 });
