@@ -9,6 +9,7 @@ const { buildPagePayload, renderFullDocument } = require('./server/pageRenderer'
 const DEFAULT_HOST = serverConfig.host || '127.0.0.1';
 const DEFAULT_ARTIST = 'saintjustus';
 const SHELL_HEADER = 'saintjustus-shell';
+const PUBLIC_DIR = path.join(__dirname, 'public');
 
 trackCatalog.initialize();
 
@@ -65,7 +66,7 @@ function buildTrackResponse() {
 
 const app = express();
 
-app.use(express.static(path.join(__dirname)));
+app.use(express.static(PUBLIC_DIR));
 
 app.get('/favicon.ico', (req, res) => {
     res.status(204).end();
@@ -116,7 +117,7 @@ app.use((req, res, next) => {
     }
 
     if (req.accepts('html')) {
-        return res.status(404).send('<!DOCTYPE html><html><head><title>not found — saintjustus.xyz</title></head><body><p>page not found.</p></body></html>');
+        return res.status(404).send('<!DOCTYPE html><html><head><title>not found â€” saintjustus.xyz</title></head><body><p>page not found.</p></body></html>');
     }
 
     return next();
