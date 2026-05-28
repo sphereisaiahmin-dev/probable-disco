@@ -6,19 +6,22 @@ const path = require('node:path');
 const { buildPublicAssets, publicDir } = require('../build-assets');
 
 test('build script creates the Vercel public asset tree', () => {
-    const result = buildPublicAssets();
+    const testOutputDir = path.join(publicDir, '..', 'public-test-build');
+    const result = buildPublicAssets(testOutputDir);
 
-    assert.equal(result.publicDir, publicDir);
+    assert.equal(result.publicDir, testOutputDir);
 
     const expectedPaths = [
-        path.join(publicDir, 'css', 'site.css'),
-        path.join(publicDir, 'js', 'patch.js'),
-        path.join(publicDir, 'lightmode', 'js', 'ops.js'),
-        path.join(publicDir, 'assets', 'lib_images_dot.png'),
-        path.join(publicDir, 'screenshot.png')
+        path.join(testOutputDir, 'css', 'site.css'),
+        path.join(testOutputDir, 'js', 'patch.js'),
+        path.join(testOutputDir, 'lightmode', 'js', 'ops.js'),
+        path.join(testOutputDir, 'assets', 'lib_images_dot.png'),
+        path.join(testOutputDir, 'screenshot.png')
     ];
 
     expectedPaths.forEach((expectedPath) => {
         assert.ok(fs.existsSync(expectedPath), `expected generated asset: ${expectedPath}`);
     });
+
+    fs.rmSync(testOutputDir, { recursive: true, force: true });
 });
