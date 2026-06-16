@@ -33,6 +33,7 @@ const EMBED_FALLBACK_TIMEOUT = 6000;
 const WINDOW_REVEAL_DELAY = 200;
 const VIDEO_DEFAULT_RATE = 1;
 const VIDEO_HOVER_RATE = 1.5;
+const DEFAULT_MEDIA_ASPECT_RATIO = 16 / 9;
 
 const placementCache = new Map();
 const floatingWindows = new Set();
@@ -79,7 +80,8 @@ function prepareConfigs(layerKey, entries) {
     }
 
     return entries.map((entry, index) => {
-        const type = entry.type || (layerKey === "art" ? "scene" : "embed");
+        const mediaItems = normaliseMediaItems(entry.mediaItems || entry.media);
+        const type = entry.type || (mediaItems.length ? "media" : layerKey === "art" ? "scene" : "embed");
         const slug = entry.id || `${layerKey}-${index + 1}`;
         const uid = `${layerKey}:${slug}`;
         const config = {
@@ -88,11 +90,67 @@ function prepareConfigs(layerKey, entries) {
             uid,
             layerKey,
             order: index,
-            type
+            type,
+            mediaItems
         };
         configIndex.set(uid, config);
         return config;
     });
+}
+
+function normaliseMediaItems(items) {
+    if (!Array.isArray(items)) {
+        return [];
+    }
+
+    return items
+        .map((item) => {
+            if (!item) {
+                return null;
+            }
+
+            const rawItem = typeof item === "string" ? { src: item } : item;
+            const src = `${rawItem.src || rawItem.url || ""}`.trim();
+            if (!src) {
+                return null;
+            }
+
+            const type = normaliseMediaType(rawItem.type || inferMediaType(src));
+            if (!type) {
+                return null;
+            }
+
+            return {
+                ...rawItem,
+                src,
+                type,
+                alt: `${rawItem.alt || rawItem.title || rawItem.label || ""}`.trim()
+            };
+        })
+        .filter(Boolean);
+}
+
+function normaliseMediaType(type) {
+    const key = `${type || ""}`.trim().toLowerCase();
+    if (key === "image" || key === "video") {
+        return key;
+    }
+    return null;
+}
+
+function inferMediaType(src) {
+    const path = `${src}`.split(/[?#]/)[0].toLowerCase();
+    if (/\.(jpe?g|png|gif|webp|avif)$/.test(path)) {
+        return "image";
+    }
+    if (/\.(mp4|webm|mov|m4v)$/.test(path)) {
+        return "video";
+    }
+    return "video";
+}
+
+function hasMediaItems(config) {
+    return Array.isArray(config?.mediaItems) && config.mediaItems.length > 0;
 }
 
 function bootstrapLayers() {
@@ -199,6 +257,9 @@ function attachGlobalListeners() {
 function createWindowElement(config) {
     const windowElement = document.createElement("article");
     windowElement.className = "art-window";
+    if (hasMediaItems(config)) {
+        windowElement.classList.add("has-media-carousel");
+    }
     windowElement.dataset.windowId = config.uid;
     windowElement.dataset.windowLayer = config.layerKey;
     applyInitialPlacement(windowElement, config);
@@ -292,6 +353,11 @@ function createWindowElement(config) {
         viewport.appendChild(hint);
     }
 
+    const mediaControls = createMediaControls(config, windowElement);
+    if (mediaControls) {
+        viewport.appendChild(mediaControls);
+    }
+
     if (config.type === "embed" && !runtimePreviewApplied) {
         hydrateEmbedPreview(config, preview);
     }
@@ -334,6 +400,42 @@ function createWindowElement(config) {
     });
 
     return windowElement;
+}
+
+function createMediaControls(config, windowElement) {
+    if (!hasMediaItems(config) || config.mediaItems.length < 2) {
+        return null;
+    }
+
+    const controls = document.createElement("div");
+    controls.className = "art-window__carousel";
+    controls.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+    });
+
+    const actions = [
+        { direction: -1, label: "previous", text: "<", className: "art-window__carousel-button--previous" },
+        { direction: 1, label: "next", text: ">", className: "art-window__carousel-button--next" }
+    ];
+
+    actions.forEach((action) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `art-window__carousel-button ${action.className}`;
+        button.textContent = action.text;
+        button.setAttribute("aria-label", `${action.label} media in ${config.title}`);
+        button.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!windowElement.classList.contains("is-active")) {
+                return;
+            }
+            cycleWindowMedia(windowElement, config.uid, action.direction);
+        });
+        controls.appendChild(button);
+    });
+
+    return controls;
 }
 
 function createTagList(rawTags) {
@@ -509,6 +611,8 @@ function initialiseLivePreview(windowElement, state) {
             state.viewport?.appendChild(state.canvas);
         }
         mountScene(state, windowElement, state.config.uid, { allowInactive: true });
+    } else if (hasMediaItems(state.config)) {
+        attachMediaPreview(windowElement, state);
     } else if (state.config.videoSrc) {
         attachVideoPreview(windowElement, state);
     } else if (state.config.type === "embed") {
@@ -552,6 +656,171 @@ function attachVideoPreview(windowElement, state) {
     state.viewport.appendChild(video);
     state.videoElement = video;
     setupVideoHoverPlayback(windowElement, state);
+}
+
+function attachMediaPreview(windowElement, state) {
+    if (!state?.viewport || state.mediaElement || !hasMediaItems(state.config)) {
+        return;
+    }
+
+    renderSelectedMedia(windowElement, state);
+}
+
+function renderSelectedMedia(windowElement, state) {
+    if (!state?.viewport || !hasMediaItems(state.config)) {
+        return;
+    }
+
+    const mediaItem = getSelectedMediaItem(state);
+    if (!mediaItem) {
+        showError(state.viewportHost, state, "media unavailable");
+        return;
+    }
+
+    teardownMediaElement(state);
+    if (state.errorElement) {
+        state.errorElement.hidden = true;
+    }
+
+    const mediaElement =
+        mediaItem.type === "image"
+            ? createMediaImageElement(windowElement, state, mediaItem)
+            : createMediaVideoElement(windowElement, state, mediaItem);
+
+    mediaElement.dataset.mediaIndex = state.mediaIndex.toString();
+    state.viewport.appendChild(mediaElement);
+    state.mediaElement = mediaElement;
+    state.mounted = true;
+    applyActiveMediaPlacement(windowElement, state);
+}
+
+function createMediaVideoElement(windowElement, state, mediaItem) {
+    const video = document.createElement("video");
+    video.className = "art-window__media art-window__media--video";
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.autoplay = true;
+    video.preload = "auto";
+    video.controls = false;
+    video.playbackRate = VIDEO_DEFAULT_RATE;
+    if (mediaItem.poster) {
+        video.poster = mediaItem.poster;
+    }
+
+    video.addEventListener(
+        "loadedmetadata",
+        () => {
+            recordMediaDimensions(state, mediaItem, video.videoWidth, video.videoHeight);
+            applyActiveMediaPlacement(windowElement, state);
+        },
+        { once: true }
+    );
+    video.addEventListener(
+        "loadeddata",
+        () => {
+            ensureMediaPlayback(state);
+            markPreviewLive(state.previewElement);
+        },
+        { once: true }
+    );
+    video.addEventListener("error", () => {
+        showError(state.viewportHost, state, "media unavailable");
+    });
+    video.src = mediaItem.src;
+
+    return video;
+}
+
+function createMediaImageElement(windowElement, state, mediaItem) {
+    const image = document.createElement("img");
+    image.className = "art-window__media art-window__media--image";
+    image.alt = mediaItem.alt || state.config.title || "portfolio media";
+    image.decoding = "async";
+    image.loading = "lazy";
+    image.addEventListener(
+        "load",
+        () => {
+            recordMediaDimensions(state, mediaItem, image.naturalWidth, image.naturalHeight);
+            markPreviewLive(state.previewElement);
+            applyActiveMediaPlacement(windowElement, state);
+        },
+        { once: true }
+    );
+    image.addEventListener("error", () => {
+        showError(state.viewportHost, state, "media unavailable");
+    });
+    image.src = mediaItem.src;
+
+    return image;
+}
+
+function teardownMediaElement(state) {
+    const mediaElement = state?.mediaElement;
+    if (!mediaElement) {
+        return;
+    }
+
+    if (mediaElement.tagName === "VIDEO") {
+        mediaElement.pause();
+        mediaElement.removeAttribute("src");
+        if (typeof mediaElement.load === "function") {
+            mediaElement.load();
+        }
+    }
+
+    mediaElement.remove();
+    state.mediaElement = null;
+}
+
+function getSelectedMediaItem(state) {
+    if (!hasMediaItems(state?.config)) {
+        return null;
+    }
+
+    const items = state.config.mediaItems;
+    const index = clamp(Math.round(state.mediaIndex || 0), 0, items.length - 1);
+    state.mediaIndex = index;
+    return items[index] || null;
+}
+
+function cycleWindowMedia(windowElement, configId, direction) {
+    const state = ensureWindowState(configId);
+    if (!windowElement || !state || !hasMediaItems(state.config) || state.config.mediaItems.length < 2) {
+        return;
+    }
+
+    const total = state.config.mediaItems.length;
+    state.mediaIndex = (state.mediaIndex + direction + total) % total;
+    renderSelectedMedia(windowElement, state);
+}
+
+function recordMediaDimensions(state, mediaItem, width, height) {
+    const nextWidth = Number(width);
+    const nextHeight = Number(height);
+    if (!state || !mediaItem?.src || nextWidth <= 0 || nextHeight <= 0) {
+        return;
+    }
+
+    state.mediaDimensions.set(mediaItem.src, {
+        width: nextWidth,
+        height: nextHeight
+    });
+}
+
+function ensureMediaPlayback(state) {
+    const mediaElement = state?.mediaElement;
+    if (!mediaElement || mediaElement.tagName !== "VIDEO") {
+        return;
+    }
+
+    mediaElement.playbackRate = VIDEO_DEFAULT_RATE;
+    const playPromise = mediaElement.play();
+    if (playPromise?.catch) {
+        playPromise.catch(() => {
+            /* autoplay restrictions */
+        });
+    }
 }
 
 function markPreviewLive(preview) {
@@ -897,6 +1166,9 @@ function ensureWindowState(configId) {
             canvas: null,
             iframe: null,
             videoElement: null,
+            mediaElement: null,
+            mediaIndex: 0,
+            mediaDimensions: new Map(),
             viewport: null,
             viewportHost: null,
             mounted: false,
@@ -972,6 +1244,9 @@ function mountWindowContent(windowElement, state, { allowInactive = false } = {}
 
     if (state.config.type === "scene") {
         mountScene(state, windowElement, state.config.uid, { allowInactive });
+    } else if (hasMediaItems(state.config)) {
+        ensureMediaPlayback(state);
+        applyActiveMediaPlacement(windowElement, state);
     } else if (state.config.videoSrc) {
         ensureVideoPlayback(state);
     } else {
@@ -1026,7 +1301,9 @@ function restoreWindowContent(windowElement, state) {
         return;
     }
 
-    if (state.config.videoSrc) {
+    if (hasMediaItems(state.config)) {
+        ensureMediaPlayback(state);
+    } else if (state.config.videoSrc) {
         ensureVideoPlayback(state);
     }
 }
@@ -1061,6 +1338,8 @@ function teardownWindowContent(windowElement, state) {
         state.videoHoverAttached = false;
     }
 
+    teardownMediaElement(state);
+
     if (state.videoElement) {
         state.videoElement.pause();
         state.videoElement.removeAttribute("src");
@@ -1082,6 +1361,7 @@ function teardownWindowContent(windowElement, state) {
     }
 
     state.previewInitialised = false;
+    state.mounted = false;
 
     if (!windowElement.classList.contains("is-active")) {
         syncBodyActiveState();
@@ -1244,6 +1524,10 @@ function closeWindow(windowElement, configId) {
         resizeScene(state);
     }
 
+    if (state && hasMediaItems(state.config)) {
+        ensureMediaPlayback(state);
+    }
+
     if (state?.videoElement) {
         ensureVideoPlayback(state);
     }
@@ -1309,6 +1593,11 @@ function restoreWindowOrigin(windowElement) {
 }
 
 function applyExpandedPlacement(windowElement, config) {
+    if (hasMediaItems(config)) {
+        applyActiveMediaPlacement(windowElement, ensureWindowState(config.uid));
+        return;
+    }
+
     const bottomClearance = getAudioPlayerClearance(false);
     const width = window.innerWidth;
     const height = Math.max(window.innerHeight - bottomClearance, ACTIVE_MIN_HEIGHT);
@@ -1320,6 +1609,82 @@ function applyExpandedPlacement(windowElement, config) {
 
     windowElement.dataset.expandedWidth = Math.round(width).toString();
     windowElement.dataset.expandedHeight = Math.round(height).toString();
+}
+
+function applyActiveMediaPlacement(windowElement, state) {
+    if (!windowElement || !state || !hasMediaItems(state.config) || !windowElement.classList.contains("is-active")) {
+        return;
+    }
+
+    applyMediaAspectFitPlacement(windowElement, getSelectedMediaAspectRatio(state));
+}
+
+function getSelectedMediaAspectRatio(state) {
+    const mediaItem = getSelectedMediaItem(state);
+    const dimensions = mediaItem?.src ? state.mediaDimensions.get(mediaItem.src) : null;
+    if (dimensions?.width > 0 && dimensions?.height > 0) {
+        return dimensions.width / dimensions.height;
+    }
+
+    return parseAspectRatio(mediaItem?.aspectRatio || mediaItem?.ratio) || DEFAULT_MEDIA_ASPECT_RATIO;
+}
+
+function parseAspectRatio(value) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        return value;
+    }
+
+    const raw = `${value || ""}`.trim();
+    if (!raw) {
+        return null;
+    }
+
+    if (raw.includes("/")) {
+        const [width, height] = raw.split("/").map((part) => Number(part.trim()));
+        if (width > 0 && height > 0) {
+            return width / height;
+        }
+    }
+
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function applyMediaAspectFitPlacement(windowElement, aspectRatio) {
+    const safeAspectRatio = aspectRatio > 0 ? aspectRatio : DEFAULT_MEDIA_ASPECT_RATIO;
+    const gutter = WINDOW_EDGE_GUTTER;
+    const bottomClearance = getAudioPlayerClearance(false);
+    const header = windowElement.querySelector(".art-window__header");
+    const headerRect = header?.getBoundingClientRect();
+    const headerHeight = Math.max(headerRect?.height || header?.offsetHeight || 0, 0);
+    const availableWidth = Math.max(window.innerWidth - gutter * 2, WINDOW_MIN_WIDTH);
+    const availableWindowHeight = Math.max(window.innerHeight - bottomClearance - gutter * 2, WINDOW_MIN_HEIGHT);
+    const availableViewportHeight = Math.max(availableWindowHeight - headerHeight, WINDOW_MIN_HEIGHT);
+
+    let viewportWidth = availableWidth;
+    let viewportHeight = viewportWidth / safeAspectRatio;
+
+    if (viewportHeight > availableViewportHeight) {
+        viewportHeight = availableViewportHeight;
+        viewportWidth = viewportHeight * safeAspectRatio;
+    }
+
+    viewportWidth = clamp(viewportWidth, WINDOW_MIN_WIDTH, availableWidth);
+
+    const width = Math.round(viewportWidth);
+    const height = Math.round(viewportHeight + headerHeight);
+    const maxLeft = Math.max(window.innerWidth - width - gutter, 0);
+    const maxTop = Math.max(window.innerHeight - bottomClearance - height - gutter, 0);
+    const left = clamp((window.innerWidth - width) / 2, Math.min(gutter, maxLeft), maxLeft);
+    const top = clamp(gutter + (availableWindowHeight - height) / 2, Math.min(gutter, maxTop), maxTop);
+
+    windowElement.style.left = `${left}px`;
+    windowElement.style.top = `${top}px`;
+    windowElement.style.width = `${width}px`;
+    windowElement.style.height = `${height}px`;
+
+    windowElement.dataset.expandedWidth = width.toString();
+    windowElement.dataset.expandedHeight = height.toString();
 }
 
 function resizeScene(state) {
@@ -1359,17 +1724,31 @@ function handleResize() {
 }
 
 function handleKeydown(event) {
-    if (event.key !== "Escape") {
+    const activeWindow = document.querySelector(".art-window.is-active");
+    if (!activeWindow) {
         return;
     }
 
-    const activeWindow = document.querySelector(".art-window.is-active");
-    if (activeWindow) {
+    if (event.key === "Escape") {
         const configId = activeWindow.dataset.windowId;
         if (configId) {
             closeWindow(activeWindow, configId);
         }
+        return;
     }
+
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+    }
+
+    const configId = activeWindow.dataset.windowId;
+    const state = configId ? windowStates.get(configId) : null;
+    if (!state || !hasMediaItems(state.config)) {
+        return;
+    }
+
+    event.preventDefault();
+    cycleWindowMedia(activeWindow, configId, event.key === "ArrowLeft" ? -1 : 1);
 }
 
 function syncBodyActiveState() {
