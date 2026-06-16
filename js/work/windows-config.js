@@ -1,17 +1,59 @@
 export const workWindowConfig = [
     {
         id: "blare-db",
-        title: "blare.db",
+        title: "blare.db/bodyrave",
         tags: ["live", "experience", "av"],
-        description: "blare.db window hosts the live av set that anchors the project portfolio",
-        type: "embed",
-        embedUrl: "https://www.youtube.com/embed/BXqkB73kWzo?si=rFhJPPzajxmOFdQG&rel=0&modestbranding=1&playsinline=1",
+        description: "blare.db/bodyrave window hosts live documentation and bodyrave visual pieces",
+        type: "media",
+        mediaItems: [
+            {
+                type: "youtube",
+                src: "https://www.youtube.com/watch?v=BXqkB73kWzo&t=1s",
+                title: "blare.db",
+                aspectRatio: "16/9"
+            },
+            {
+                type: "youtube",
+                src: "https://www.youtube.com/watch?v=RioNTwwQgWc",
+                title: "bodyrave",
+                aspectRatio: "16/9"
+            },
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/blaredb-cyber.mp4",
+                title: "blaredb cyber"
+            },
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/blaredb-recap.mp4",
+                title: "blaredb recap"
+            },
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/bodyrave-indoorad.mp4",
+                title: "bodyrave indoor ad"
+            },
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/bodyrave-outdoor.mp4",
+                title: "bodyrave outdoor"
+            },
+            {
+                type: "image",
+                src: "https://stjaudio.b-cdn.net/video/posterblare.db.jpg",
+                alt: "posterblare.db artwork"
+            },
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/strobe-bodyrave.mp4",
+                title: "strobe bodyrave",
+                strobeWarning: true,
+                warningText: "strobe warning: continue?"
+            }
+        ],
         initialPosition: { x: 160, y: 160 },
         initialSize: { width: 520, height: 320 },
-        hint: "watch blare.db",
-        allow:
-            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen",
-        embedErrorMessage: "video blocked — open on youtube",
+        hint: "view blare.db/bodyrave",
         previewGradient: "linear-gradient(135deg, rgba(80,80,80,0.25), rgba(255,255,255,0.1))"
     },
     {
@@ -27,16 +69,16 @@ export const workWindowConfig = [
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(0,0,0,0.25))"
     },
     {
-        id: "browser-instrument",
-        title: "browser instrument",
-        tags: ["code sandbox", "live build"],
-        description: "embedded sandbox to share the browser-native instrument builds",
+        id: "thx4cmn-com",
+        title: "thx4cmn.com",
+        tags: ["web development", "design"],
+        description: "embedded thx4cmn.com portfolio build",
         type: "embed",
-        embedUrl: "https://codesandbox.io/embed/new?fontsize=14&hidenavigation=1&theme=dark",
+        embedUrl: "https://www.thx4cmn.com/",
         initialPosition: { x: 220, y: 320 },
-        initialSize: { width: 520, height: 360 },
-        hint: "open tool",
-        allow: "clipboard-write; fullscreen; geolocation",
+        initialSize: { width: 540, height: 360 },
+        hint: "open thx4cmn.com",
+        allow: "fullscreen",
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.12), rgba(64,128,255,0.18))"
     }
 ];
