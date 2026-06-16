@@ -46,7 +46,9 @@ export const workWindowConfig = [
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/strobe-bodyrave.mp4",
-                title: "strobe bodyrave"
+                title: "strobe bodyrave",
+                strobeWarning: true,
+                warningText: "strobe warning: continue?"
             }
         ],
         initialPosition: { x: 160, y: 160 },

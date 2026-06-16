@@ -951,6 +951,12 @@ html[data-page="music"] [data-background-canvas] {
     border: 0;
     background: #000;
     object-fit: contain;
+    transition: filter 0.35s ease, transform 0.35s ease;
+}
+
+.art-window__media.is-strobe-warning-pending {
+    filter: blur(14px) saturate(0.8);
+    transform: scale(1.04);
 }
 
 .art-window__media--image {
@@ -988,7 +994,7 @@ html[data-page="music"] [data-background-canvas] {
 }
 
 .art-window.has-media-carousel .art-window__carousel-button {
-    opacity: 0.24;
+    opacity: 0.34;
     visibility: visible;
     pointer-events: auto;
 }
@@ -1006,13 +1012,59 @@ html[data-page="music"] [data-background-canvas] {
 .art-window.has-media-carousel:hover .art-window__carousel-button,
 .art-window.has-media-carousel:focus-within .art-window__carousel-button,
 .art-window.is-active .art-window__carousel-button {
-    opacity: 0.42;
+    opacity: 0.52;
 }
 
 .art-window__carousel-button:hover,
 .art-window__carousel-button:focus-visible {
     color: var(--text-color);
-    opacity: 0.88;
+    opacity: 0.92;
+    outline: none;
+}
+
+.art-window__media-warning {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7rem;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.46);
+    color: var(--text-color);
+    text-align: center;
+    pointer-events: auto;
+}
+
+.art-window__media-warning-text {
+    max-width: 16rem;
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    letter-spacing: 0.08em;
+}
+
+.art-window__media-warning-button {
+    appearance: none;
+    min-width: 6.2rem;
+    min-height: 2.1rem;
+    border: 1px solid var(--accent-color);
+    border-radius: 0.35rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    font: inherit;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.art-window__media-warning-button:hover,
+.art-window__media-warning-button:focus-visible {
+    border-color: var(--text-color);
+    background: rgba(255, 255, 255, 0.18);
     outline: none;
 }
 

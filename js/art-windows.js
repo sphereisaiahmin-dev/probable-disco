@@ -795,6 +795,7 @@ function renderSelectedMedia(windowElement, state) {
     state.viewport.appendChild(mediaElement);
     state.mediaElement = mediaElement;
     state.mounted = true;
+    attachMediaWarning(state, mediaItem);
     applyMediaSelectionPlacement(windowElement, state);
 }
 
@@ -804,7 +805,7 @@ function createMediaVideoElement(windowElement, state, mediaItem) {
     video.loop = true;
     video.muted = true;
     video.playsInline = true;
-    video.autoplay = true;
+    video.autoplay = !requiresMediaConfirmation(mediaItem);
     video.preload = "auto";
     video.controls = false;
     video.playbackRate = VIDEO_DEFAULT_RATE;
@@ -823,7 +824,11 @@ function createMediaVideoElement(windowElement, state, mediaItem) {
     video.addEventListener(
         "loadeddata",
         () => {
-            ensureMediaPlayback(state);
+            if (requiresMediaConfirmation(mediaItem)) {
+                video.pause();
+            } else {
+                ensureMediaPlayback(state);
+            }
             markPreviewLive(state.previewElement);
         },
         { once: true }
@@ -834,6 +839,64 @@ function createMediaVideoElement(windowElement, state, mediaItem) {
     video.src = mediaItem.src;
 
     return video;
+}
+
+function attachMediaWarning(state, mediaItem) {
+    clearMediaWarning(state);
+    if (!requiresMediaConfirmation(mediaItem) || !state?.mediaElement || !state.viewportHost) {
+        return;
+    }
+
+    const warning = document.createElement("div");
+    warning.className = "art-window__media-warning";
+    warning.setAttribute("role", "group");
+    warning.setAttribute("aria-label", getMediaWarningText(mediaItem));
+
+    const label = document.createElement("p");
+    label.className = "art-window__media-warning-text";
+    label.textContent = getMediaWarningText(mediaItem);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "art-window__media-warning-button";
+    button.textContent = "continue";
+    button.setAttribute(
+        "aria-label",
+        `continue ${mediaItem.title || mediaItem.alt || state.config.title || "media"} playback`
+    );
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        clearMediaWarning(state);
+        ensureMediaPlayback(state);
+    });
+
+    warning.addEventListener("click", (event) => {
+        event.stopPropagation();
+    });
+    warning.append(label, button);
+
+    state.mediaElement.classList.add("is-strobe-warning-pending");
+    state.viewportHost.appendChild(warning);
+    state.mediaWarningElement = warning;
+}
+
+function clearMediaWarning(state) {
+    if (state?.mediaElement) {
+        state.mediaElement.classList.remove("is-strobe-warning-pending");
+    }
+    if (state?.mediaWarningElement) {
+        state.mediaWarningElement.remove();
+        state.mediaWarningElement = null;
+    }
+}
+
+function requiresMediaConfirmation(mediaItem) {
+    return Boolean(mediaItem?.strobeWarning || mediaItem?.requiresConfirmation || mediaItem?.warningText);
+}
+
+function getMediaWarningText(mediaItem) {
+    return `${mediaItem?.warningText || "strobe warning: continue?"}`;
 }
 
 function createMediaImageElement(windowElement, state, mediaItem) {
@@ -889,6 +952,7 @@ function createMediaEmbedElement(windowElement, state, mediaItem) {
 
 function teardownMediaElement(state) {
     const mediaElement = state?.mediaElement;
+    clearMediaWarning(state);
     if (!mediaElement) {
         return;
     }
@@ -942,7 +1006,7 @@ function recordMediaDimensions(state, mediaItem, width, height) {
 
 function ensureMediaPlayback(state) {
     const mediaElement = state?.mediaElement;
-    if (!mediaElement || mediaElement.tagName !== "VIDEO") {
+    if (!mediaElement || mediaElement.tagName !== "VIDEO" || state.mediaWarningElement) {
         return;
     }
 
@@ -1299,6 +1363,7 @@ function ensureWindowState(configId) {
             iframe: null,
             videoElement: null,
             mediaElement: null,
+            mediaWarningElement: null,
             mediaIndex: 0,
             mediaDimensions: new Map(),
             viewport: null,
