@@ -135,10 +135,17 @@ function normaliseMediaType(type) {
     if (key === "image" || key === "video") {
         return key;
     }
+    if (key === "embed" || key === "iframe" || key === "youtube") {
+        return "embed";
+    }
     return null;
 }
 
 function inferMediaType(src) {
+    if (isYouTubeUrl(src)) {
+        return "embed";
+    }
+
     const path = `${src}`.split(/[?#]/)[0].toLowerCase();
     if (/\.(jpe?g|png|gif|webp|avif)$/.test(path)) {
         return "image";
@@ -151,6 +158,72 @@ function inferMediaType(src) {
 
 function hasMediaItems(config) {
     return Array.isArray(config?.mediaItems) && config.mediaItems.length > 0;
+}
+
+function isYouTubeUrl(src) {
+    let url;
+    try {
+        url = new URL(src);
+    } catch (error) {
+        return false;
+    }
+
+    const host = url.hostname.replace(/^www\./, "");
+    return host === "youtube.com" || host === "youtu.be" || host === "youtube-nocookie.com";
+}
+
+function normaliseYouTubeEmbedUrl(src) {
+    let url;
+    try {
+        url = new URL(src);
+    } catch (error) {
+        return src;
+    }
+
+    const host = url.hostname.replace(/^www\./, "");
+    let videoId = "";
+    if (host === "youtu.be") {
+        videoId = url.pathname.split("/").filter(Boolean)[0] || "";
+    } else {
+        const pathParts = url.pathname.split("/").filter(Boolean);
+        if (pathParts[0] === "embed" && pathParts[1]) {
+            videoId = pathParts[1];
+        } else if (pathParts[0] === "shorts" && pathParts[1]) {
+            videoId = pathParts[1];
+        } else {
+            videoId = url.searchParams.get("v") || "";
+        }
+    }
+
+    if (!videoId) {
+        return src;
+    }
+
+    const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
+    const start = getYouTubeStartTime(url);
+    if (start > 0) {
+        embedUrl.searchParams.set("start", start.toString());
+    }
+    embedUrl.searchParams.set("rel", "0");
+    embedUrl.searchParams.set("modestbranding", "1");
+    embedUrl.searchParams.set("playsinline", "1");
+    return embedUrl.toString();
+}
+
+function getYouTubeStartTime(url) {
+    const raw = url.searchParams.get("t") || url.searchParams.get("start") || "";
+    if (!raw) {
+        return 0;
+    }
+
+    if (/^\d+$/.test(raw)) {
+        return Number(raw);
+    }
+
+    const hours = /(\d+)h/.exec(raw)?.[1] || 0;
+    const minutes = /(\d+)m/.exec(raw)?.[1] || 0;
+    const seconds = /(\d+)s/.exec(raw)?.[1] || 0;
+    return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
 }
 
 function bootstrapLayers() {
@@ -208,6 +281,7 @@ function connectLayer(layerKey, layer, configs) {
     const windows = configs.map((config) => {
         const windowElement = createWindowElement(config);
         layer.appendChild(windowElement);
+        syncMediaPlacement(windowElement, config);
         return windowElement;
     });
 
@@ -236,12 +310,23 @@ function reconcileExistingWindows(layer, configs, existingWindows) {
     return configs.map((config) => {
         const hydrated = windowsById.get(config.uid);
         if (hydrated) {
+            syncMediaPlacement(hydrated, config);
             return hydrated;
         }
         const windowElement = createWindowElement(config);
         layer.appendChild(windowElement);
+        syncMediaPlacement(windowElement, config);
         return windowElement;
     });
+}
+
+function syncMediaPlacement(windowElement, config) {
+    if (!windowElement || !hasMediaItems(config)) {
+        return;
+    }
+
+    const state = ensureWindowState(config.uid);
+    applyMediaSelectionPlacement(windowElement, state);
 }
 
 function attachGlobalListeners() {
@@ -297,6 +382,11 @@ function createWindowElement(config) {
         descriptionToggle.textContent = "…";
         descriptionToggle.setAttribute("aria-label", `toggle description for ${config.title}`);
         controls.appendChild(descriptionToggle);
+    }
+
+    if (hasMediaItems(config) && config.mediaItems.length > 1) {
+        controls.appendChild(createHeaderMediaControl(config, windowElement, -1));
+        controls.appendChild(createHeaderMediaControl(config, windowElement, 1));
     }
 
     const fullscreenButton = document.createElement("button");
@@ -402,6 +492,21 @@ function createWindowElement(config) {
     return windowElement;
 }
 
+function createHeaderMediaControl(config, windowElement, direction) {
+    const isPrevious = direction < 0;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `art-window__control art-window__control--media-${isPrevious ? "previous" : "next"}`;
+    button.textContent = isPrevious ? "<" : ">";
+    button.setAttribute("aria-label", `${isPrevious ? "previous" : "next"} media in ${config.title}`);
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        cycleWindowMedia(windowElement, config.uid, direction);
+    });
+    return button;
+}
+
 function createMediaControls(config, windowElement) {
     if (!hasMediaItems(config) || config.mediaItems.length < 2) {
         return null;
@@ -427,9 +532,6 @@ function createMediaControls(config, windowElement) {
         button.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (!windowElement.classList.contains("is-active")) {
-                return;
-            }
             cycleWindowMedia(windowElement, config.uid, action.direction);
         });
         controls.appendChild(button);
@@ -685,13 +787,15 @@ function renderSelectedMedia(windowElement, state) {
     const mediaElement =
         mediaItem.type === "image"
             ? createMediaImageElement(windowElement, state, mediaItem)
+            : mediaItem.type === "embed"
+            ? createMediaEmbedElement(windowElement, state, mediaItem)
             : createMediaVideoElement(windowElement, state, mediaItem);
 
     mediaElement.dataset.mediaIndex = state.mediaIndex.toString();
     state.viewport.appendChild(mediaElement);
     state.mediaElement = mediaElement;
     state.mounted = true;
-    applyActiveMediaPlacement(windowElement, state);
+    applyMediaSelectionPlacement(windowElement, state);
 }
 
 function createMediaVideoElement(windowElement, state, mediaItem) {
@@ -712,7 +816,7 @@ function createMediaVideoElement(windowElement, state, mediaItem) {
         "loadedmetadata",
         () => {
             recordMediaDimensions(state, mediaItem, video.videoWidth, video.videoHeight);
-            applyActiveMediaPlacement(windowElement, state);
+            applyMediaSelectionPlacement(windowElement, state);
         },
         { once: true }
     );
@@ -743,7 +847,7 @@ function createMediaImageElement(windowElement, state, mediaItem) {
         () => {
             recordMediaDimensions(state, mediaItem, image.naturalWidth, image.naturalHeight);
             markPreviewLive(state.previewElement);
-            applyActiveMediaPlacement(windowElement, state);
+            applyMediaSelectionPlacement(windowElement, state);
         },
         { once: true }
     );
@@ -753,6 +857,34 @@ function createMediaImageElement(windowElement, state, mediaItem) {
     image.src = mediaItem.src;
 
     return image;
+}
+
+function createMediaEmbedElement(windowElement, state, mediaItem) {
+    const iframe = document.createElement("iframe");
+    iframe.className = "art-window__media art-window__media--embed";
+    iframe.src = mediaItem.embedUrl || normaliseYouTubeEmbedUrl(mediaItem.src);
+    iframe.loading = "lazy";
+    iframe.title = mediaItem.title || mediaItem.alt || state.config.title || "embedded media";
+    iframe.allowFullscreen = mediaItem.allowFullscreen !== false;
+    iframe.setAttribute(
+        "allow",
+        mediaItem.allow ||
+            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    );
+    iframe.referrerPolicy = mediaItem.referrerPolicy || "strict-origin-when-cross-origin";
+    iframe.addEventListener(
+        "load",
+        () => {
+            markPreviewLive(state.previewElement);
+            applyMediaSelectionPlacement(windowElement, state);
+        },
+        { once: true }
+    );
+    iframe.addEventListener("error", () => {
+        showError(state.viewportHost, state, "embed unavailable");
+    });
+
+    return iframe;
 }
 
 function teardownMediaElement(state) {
@@ -1246,7 +1378,7 @@ function mountWindowContent(windowElement, state, { allowInactive = false } = {}
         mountScene(state, windowElement, state.config.uid, { allowInactive });
     } else if (hasMediaItems(state.config)) {
         ensureMediaPlayback(state);
-        applyActiveMediaPlacement(windowElement, state);
+        applyMediaSelectionPlacement(windowElement, state);
     } else if (state.config.videoSrc) {
         ensureVideoPlayback(state);
     } else {
@@ -1519,6 +1651,10 @@ function closeWindow(windowElement, configId) {
     windowElement.classList.remove("is-active");
     restoreWindowOrigin(windowElement);
 
+    if (state && hasMediaItems(state.config)) {
+        applyMediaSelectionPlacement(windowElement, state);
+    }
+
     if (state && state.mounted && state.config.type === "scene") {
         mountedSceneStates.set(configId, state);
         resizeScene(state);
@@ -1594,7 +1730,7 @@ function restoreWindowOrigin(windowElement) {
 
 function applyExpandedPlacement(windowElement, config) {
     if (hasMediaItems(config)) {
-        applyActiveMediaPlacement(windowElement, ensureWindowState(config.uid));
+        applyMediaSelectionPlacement(windowElement, ensureWindowState(config.uid));
         return;
     }
 
@@ -1611,12 +1747,25 @@ function applyExpandedPlacement(windowElement, config) {
     windowElement.dataset.expandedHeight = Math.round(height).toString();
 }
 
-function applyActiveMediaPlacement(windowElement, state) {
-    if (!windowElement || !state || !hasMediaItems(state.config) || !windowElement.classList.contains("is-active")) {
+function applyMediaSelectionPlacement(windowElement, state) {
+    if (!windowElement || !state || !hasMediaItems(state.config)) {
         return;
     }
 
-    applyMediaAspectFitPlacement(windowElement, getSelectedMediaAspectRatio(state));
+    if (!windowElement.isConnected) {
+        requestAnimationFrame(() => {
+            applyMediaSelectionPlacement(windowElement, state);
+        });
+        return;
+    }
+
+    const aspectRatio = getSelectedMediaAspectRatio(state);
+    if (windowElement.classList.contains("is-active")) {
+        applyMediaAspectFitPlacement(windowElement, aspectRatio);
+        return;
+    }
+
+    applyPreviewMediaPlacement(windowElement, aspectRatio);
 }
 
 function getSelectedMediaAspectRatio(state) {
@@ -1685,6 +1834,43 @@ function applyMediaAspectFitPlacement(windowElement, aspectRatio) {
 
     windowElement.dataset.expandedWidth = width.toString();
     windowElement.dataset.expandedHeight = height.toString();
+}
+
+function applyPreviewMediaPlacement(windowElement, aspectRatio) {
+    const safeAspectRatio = aspectRatio > 0 ? aspectRatio : DEFAULT_MEDIA_ASPECT_RATIO;
+    const gutter = WINDOW_EDGE_GUTTER;
+    const rect = windowElement.getBoundingClientRect();
+    const header = windowElement.querySelector(".art-window__header");
+    const headerRect = header?.getBoundingClientRect();
+    const headerHeight = Math.max(headerRect?.height || header?.offsetHeight || 0, 0);
+    const bottomClearance = Math.max(getAudioPlayerClearance(), gutter * 2);
+    const availableWidth = Math.max(window.innerWidth - gutter * 2, WINDOW_MIN_WIDTH);
+    const availableHeight = Math.max(window.innerHeight - bottomClearance, WINDOW_MIN_HEIGHT);
+    const currentWidth = parseFloat(windowElement.style.width ?? "") || rect.width || WINDOW_DEFAULT_WIDTH;
+
+    let viewportWidth = clamp(currentWidth, WINDOW_MIN_WIDTH, availableWidth);
+    let viewportHeight = viewportWidth / safeAspectRatio;
+    const availableViewportHeight = Math.max(availableHeight - headerHeight, WINDOW_MIN_HEIGHT);
+
+    if (viewportHeight > availableViewportHeight) {
+        viewportHeight = availableViewportHeight;
+        viewportWidth = viewportHeight * safeAspectRatio;
+    }
+
+    viewportWidth = clamp(viewportWidth, WINDOW_MIN_WIDTH, availableWidth);
+    const width = Math.round(viewportWidth);
+    const height = Math.round(clamp(viewportHeight + headerHeight, WINDOW_MIN_HEIGHT, availableHeight));
+
+    windowElement.style.width = `${width}px`;
+    windowElement.style.height = `${height}px`;
+
+    const currentLeft = parseFloat(windowElement.style.left ?? "");
+    const currentTop = parseFloat(windowElement.style.top ?? "");
+    const nextLeft = Number.isNaN(currentLeft) ? rect.left : currentLeft;
+    const nextTop = Number.isNaN(currentTop) ? rect.top : currentTop;
+    const clamped = clampPosition(windowElement, nextLeft, nextTop);
+    windowElement.style.left = `${clamped.x}px`;
+    windowElement.style.top = `${clamped.y}px`;
 }
 
 function resizeScene(state) {

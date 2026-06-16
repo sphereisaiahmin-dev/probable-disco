@@ -957,6 +957,10 @@ html[data-page="music"] [data-background-canvas] {
     user-select: none;
 }
 
+.art-window:not(.is-active) .art-window__media--embed {
+    pointer-events: none;
+}
+
 .art-window__carousel {
     position: absolute;
     inset: 0;
@@ -983,6 +987,12 @@ html[data-page="music"] [data-background-canvas] {
     transition: opacity 0.25s ease, color 0.25s ease;
 }
 
+.art-window.has-media-carousel .art-window__carousel-button {
+    opacity: 0.24;
+    visibility: visible;
+    pointer-events: auto;
+}
+
 .art-window__carousel-button--previous {
     left: 0;
     background: linear-gradient(90deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0));
@@ -993,10 +1003,10 @@ html[data-page="music"] [data-background-canvas] {
     background: linear-gradient(270deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0));
 }
 
+.art-window.has-media-carousel:hover .art-window__carousel-button,
+.art-window.has-media-carousel:focus-within .art-window__carousel-button,
 .art-window.is-active .art-window__carousel-button {
     opacity: 0.42;
-    visibility: visible;
-    pointer-events: auto;
 }
 
 .art-window__carousel-button:hover,

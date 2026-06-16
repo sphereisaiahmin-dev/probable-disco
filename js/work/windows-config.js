@@ -7,6 +7,18 @@ export const workWindowConfig = [
         type: "media",
         mediaItems: [
             {
+                type: "youtube",
+                src: "https://www.youtube.com/watch?v=BXqkB73kWzo&t=1s",
+                title: "blare.db",
+                aspectRatio: "16/9"
+            },
+            {
+                type: "youtube",
+                src: "https://www.youtube.com/watch?v=RioNTwwQgWc",
+                title: "bodyrave",
+                aspectRatio: "16/9"
+            },
+            {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/blaredb-cyber.mp4",
                 title: "blaredb cyber"
