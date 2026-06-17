@@ -69,6 +69,42 @@ export const workWindowConfig = [
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(0,0,0,0.25))"
     },
     {
+        id: "bibistar",
+        title: "bibistar",
+        tags: ["marketing", "video creation"],
+        description: "bibistar marketing video portfolio piece",
+        type: "media",
+        mediaItems: [
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/bibiportfolio.mov",
+                title: "bibistar"
+            }
+        ],
+        initialPosition: { x: 560, y: 170 },
+        initialSize: { width: 520, height: 320 },
+        hint: "preview bibistar",
+        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.14), rgba(124,242,156,0.12))"
+    },
+    {
+        id: "whocares",
+        title: "whocares",
+        tags: ["marketing", "video creation"],
+        description: "whocares marketing video portfolio piece",
+        type: "media",
+        mediaItems: [
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/whocaresbrandadfinal4.3.mov",
+                title: "whocares"
+            }
+        ],
+        initialPosition: { x: 90, y: 390 },
+        initialSize: { width: 520, height: 320 },
+        hint: "preview whocares",
+        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.12), rgba(110,168,255,0.14))"
+    },
+    {
         id: "thx4cmn-com",
         title: "thx4cmn.com",
         tags: ["web development", "design"],

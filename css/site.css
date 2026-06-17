@@ -1035,7 +1035,7 @@ html[data-page="music"] [data-background-canvas] {
     background: rgba(0, 0, 0, 0.46);
     color: var(--text-color);
     text-align: center;
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .art-window__media-warning-text {
@@ -1058,6 +1058,7 @@ html[data-page="music"] [data-background-canvas] {
     font-size: 0.8rem;
     letter-spacing: 0.08em;
     cursor: pointer;
+    pointer-events: auto;
     transition: background 0.25s ease, border-color 0.25s ease;
 }
 
