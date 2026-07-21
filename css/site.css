@@ -455,6 +455,10 @@ canvas {
     pointer-events: none;
 }
 
+.art-window-active .site-header {
+    pointer-events: none;
+}
+
 .art-window-active .theme-toggle {
     opacity: 0;
     pointer-events: none;
@@ -731,6 +735,18 @@ html[data-page="music"] [data-background-canvas] {
     --window-float-y: 0px;
 }
 
+.art-window.is-media-transitioning {
+    transition-property: left, top, width, height, box-shadow, transform, border-color, background-color, opacity;
+    transition-duration: 420ms, 420ms, 420ms, 420ms, 0.45s, 0.45s, 0.45s, 0.45s, 0.5s;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1), cubic-bezier(0.22, 1, 0.36, 1),
+        cubic-bezier(0.22, 1, 0.36, 1), cubic-bezier(0.22, 1, 0.36, 1), ease, ease, ease, ease, ease;
+    transition-delay: 0ms;
+}
+
+.art-window.is-interacting {
+    transition-property: box-shadow, transform, border-color, background-color, opacity;
+}
+
 .art-window.is-active.has-media-carousel {
     right: auto;
     min-width: min(100vw, 180px);
@@ -746,6 +762,11 @@ html[data-page="music"] [data-background-canvas] {
 
 .art-window.is-active .art-window__viewport {
     background: var(--window-active-viewport);
+}
+
+.art-window__chrome {
+    display: grid;
+    min-width: 0;
 }
 
 .art-window__header {
@@ -772,13 +793,59 @@ html[data-page="music"] [data-background-canvas] {
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
+    min-width: 0;
+}
+
+.art-window.has-dynamic-media-metadata .art-window__header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.art-window.has-dynamic-media-metadata .art-window__heading {
+    flex: 1 1 10rem;
+    overflow: hidden;
+}
+
+.art-window.has-dynamic-media-metadata .art-window__controls {
+    position: relative;
+    z-index: 5;
+    flex: 0 0 auto;
+    margin-left: auto;
 }
 
 .art-window__title {
     font-size: 0.95rem;
     margin: 0;
-    text-transform: uppercase;
+    text-transform: lowercase;
     letter-spacing: 0.2em;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.art-window__media-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    min-width: 0;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid var(--divider-color);
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.art-window__media-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    text-transform: lowercase;
+    overflow-wrap: anywhere;
+}
+
+.art-window__media-heading .art-window__tags {
+    min-width: 0;
 }
 
 .art-window__tags {
@@ -824,6 +891,9 @@ html[data-page="music"] [data-background-canvas] {
     display: flex;
     align-items: center;
     gap: 0.4rem;
+    flex: 0 0 auto;
+    position: relative;
+    z-index: 5;
 }
 
 .art-window__control {
@@ -942,8 +1012,9 @@ html[data-page="music"] [data-background-canvas] {
     z-index: 1;
 }
 
-.art-window__media {
-    position: relative;
+.art-window__content .art-window__media {
+    position: absolute;
+    inset: 0;
     z-index: 1;
     display: block;
     width: 100%;
@@ -951,7 +1022,25 @@ html[data-page="music"] [data-background-canvas] {
     border: 0;
     background: #000;
     object-fit: contain;
-    transition: filter 0.35s ease, transform 0.35s ease;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 220ms ease, filter 0.35s ease, transform 0.35s ease;
+}
+
+.art-window__content .art-window__media.is-media-active,
+.art-window__content .art-window__media.is-media-leaving {
+    visibility: visible;
+}
+
+.art-window__content .art-window__media.is-media-active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.art-window__content .art-window__media.is-media-leaving,
+.art-window__content .art-window__media.is-media-hidden {
+    opacity: 0;
 }
 
 .art-window__media.is-strobe-warning-pending {
@@ -965,6 +1054,13 @@ html[data-page="music"] [data-background-canvas] {
 
 .art-window:not(.is-active) .art-window__media--embed {
     pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .art-window.is-media-transitioning,
+    .art-window__media {
+        transition: none;
+    }
 }
 
 .art-window__carousel {
@@ -1035,7 +1131,7 @@ html[data-page="music"] [data-background-canvas] {
     background: rgba(0, 0, 0, 0.46);
     color: var(--text-color);
     text-align: center;
-    pointer-events: auto;
+    pointer-events: none;
 }
 
 .art-window__media-warning-text {
@@ -1058,6 +1154,7 @@ html[data-page="music"] [data-background-canvas] {
     font-size: 0.8rem;
     letter-spacing: 0.08em;
     cursor: pointer;
+    pointer-events: auto;
     transition: background 0.25s ease, border-color 0.25s ease;
 }
 
@@ -1228,7 +1325,7 @@ html[data-page="music"] [data-background-canvas] {
     inset: auto 1rem 1rem auto;
     font-size: 0.65rem;
     letter-spacing: 0.2em;
-    text-transform: uppercase;
+    text-transform: lowercase;
     opacity: 0.6;
     transition: opacity 0.3s ease;
     z-index: 2;
@@ -1447,5 +1544,21 @@ html[data-page="music"] [data-background-canvas] {
         min-height: clamp(220px, 60vh, 360px);
         scroll-snap-align: center;
         margin: 0 auto;
+    }
+
+    .art-window.has-dynamic-media-metadata .art-window__header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        padding: 0.65rem 0.75rem;
+    }
+
+    .art-window.has-dynamic-media-metadata .art-window__controls {
+        margin-left: auto;
+    }
+
+    .art-window__media-heading {
+        align-items: flex-start;
+        padding: 0.5rem 0.75rem;
     }
 }
