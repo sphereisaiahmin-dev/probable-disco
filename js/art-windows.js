@@ -160,6 +160,26 @@ function hasMediaItems(config) {
     return Array.isArray(config?.mediaItems) && config.mediaItems.length > 0;
 }
 
+function hasDynamicMediaMetadata(config) {
+    return hasMediaItems(config) && config.mediaItems.length > 1;
+}
+
+function hasDescription(config) {
+    if (`${config?.description || ""}`.trim()) {
+        return true;
+    }
+
+    return hasMediaItems(config) && config.mediaItems.some((item) => `${item?.description || ""}`.trim());
+}
+
+function getMediaMetadata(config, mediaItem) {
+    return {
+        title: `${mediaItem?.title || mediaItem?.alt || config?.title || "portfolio media"}`.trim(),
+        tags: Array.isArray(mediaItem?.tags) ? mediaItem.tags : config?.tags,
+        description: `${mediaItem?.description || config?.description || ""}`.trim()
+    };
+}
+
 function isYouTubeUrl(src) {
     let url;
     try {
@@ -326,6 +346,7 @@ function syncMediaPlacement(windowElement, config) {
     }
 
     const state = ensureWindowState(config.uid);
+    syncSelectedMediaMetadata(windowElement, state);
     applyMediaSelectionPlacement(windowElement, state);
 }
 
@@ -342,13 +363,20 @@ function attachGlobalListeners() {
 function createWindowElement(config) {
     const windowElement = document.createElement("article");
     windowElement.className = "art-window";
+    const usesDynamicMediaMetadata = hasDynamicMediaMetadata(config);
     if (hasMediaItems(config)) {
         windowElement.classList.add("has-media-carousel");
+    }
+    if (usesDynamicMediaMetadata) {
+        windowElement.classList.add("has-dynamic-media-metadata");
     }
     windowElement.dataset.windowId = config.uid;
     windowElement.dataset.windowLayer = config.layerKey;
     applyInitialPlacement(windowElement, config);
     bringToFront(windowElement);
+
+    const chrome = document.createElement("div");
+    chrome.className = "art-window__chrome";
 
     const header = document.createElement("header");
     header.className = "art-window__header";
@@ -361,11 +389,11 @@ function createWindowElement(config) {
     title.textContent = config.title;
     heading.appendChild(title);
 
-    const descriptionText = (config.description || "").trim();
-
-    const tags = createTagList(config.tags);
-    if (tags) {
-        heading.appendChild(tags);
+    if (!usesDynamicMediaMetadata) {
+        const tags = createTagList(config.tags);
+        if (tags) {
+            heading.appendChild(tags);
+        }
     }
 
     const controls = document.createElement("div");
@@ -375,7 +403,7 @@ function createWindowElement(config) {
     });
 
     let descriptionToggle = null;
-    if (descriptionText) {
+    if (hasDescription(config)) {
         descriptionToggle = document.createElement("button");
         descriptionToggle.type = "button";
         descriptionToggle.className = "art-window__control art-window__control--description";
@@ -413,6 +441,27 @@ function createWindowElement(config) {
     controls.appendChild(closeButton);
     header.appendChild(heading);
     header.appendChild(controls);
+    chrome.appendChild(header);
+
+    let mediaTitle = null;
+    let mediaTags = null;
+    if (usesDynamicMediaMetadata) {
+        const initialMetadata = getMediaMetadata(config, config.mediaItems[0]);
+        const mediaHeading = document.createElement("div");
+        mediaHeading.className = "art-window__media-heading";
+        mediaHeading.setAttribute("aria-live", "polite");
+        mediaHeading.setAttribute("aria-atomic", "true");
+
+        mediaTitle = document.createElement("h3");
+        mediaTitle.className = "art-window__media-title";
+        mediaTitle.textContent = initialMetadata.title;
+        mediaHeading.appendChild(mediaTitle);
+
+        mediaTags = createTagList(initialMetadata.tags, { preserveEmpty: true });
+        mediaHeading.appendChild(mediaTags);
+
+        chrome.appendChild(mediaHeading);
+    }
 
     const viewport = document.createElement("div");
     viewport.className = "art-window__viewport";
@@ -434,6 +483,8 @@ function createWindowElement(config) {
     state.viewportHost = viewport;
     state.viewport = contentHost;
     state.previewElement = preview;
+    state.mediaTitleElement = mediaTitle;
+    state.mediaTagsElement = mediaTags;
     initialiseLivePreview(windowElement, state);
 
     if (config.hint) {
@@ -458,14 +509,21 @@ function createWindowElement(config) {
     resizeHandle.setAttribute("aria-label", `resize ${config.title} window`);
     viewport.appendChild(resizeHandle);
 
-    windowElement.appendChild(header);
+    windowElement.appendChild(chrome);
     windowElement.appendChild(viewport);
 
     enableDragging(windowElement, header);
     enableResizing(windowElement, resizeHandle);
 
     registerFloatingWindow(windowElement);
-    setupDescriptionTooltip(windowElement, descriptionText, descriptionToggle);
+    const initialMetadata = getMediaMetadata(config, getSelectedMediaItem(state));
+    state.descriptionController = setupDescriptionTooltip(
+        windowElement,
+        initialMetadata.description,
+        descriptionToggle,
+        initialMetadata.title
+    );
+    syncSelectedMediaMetadata(windowElement, state);
 
     windowElement.addEventListener("click", () => {
         if (windowElement.classList.contains("is-active")) {
@@ -540,14 +598,27 @@ function createMediaControls(config, windowElement) {
     return controls;
 }
 
-function createTagList(rawTags) {
+function createTagList(rawTags, { preserveEmpty = false } = {}) {
     const tags = normaliseTags(rawTags);
-    if (!tags.length) {
+    if (!tags.length && !preserveEmpty) {
         return null;
     }
 
     const list = document.createElement("div");
     list.className = "art-window__tags";
+
+    updateTagList(list, tags);
+    return list;
+}
+
+function updateTagList(list, rawTags) {
+    if (!list) {
+        return;
+    }
+
+    const tags = normaliseTags(rawTags);
+    list.replaceChildren();
+    list.hidden = tags.length === 0;
 
     tags.forEach((tag) => {
         const item = document.createElement("span");
@@ -555,8 +626,6 @@ function createTagList(rawTags) {
         item.textContent = tag;
         list.appendChild(item);
     });
-
-    return list;
 }
 
 function normaliseTags(tags) {
@@ -583,21 +652,16 @@ function getTagColorClass(tag) {
     return `art-window__tag--${color}`;
 }
 
-function setupDescriptionTooltip(windowElement, description, toggleButton) {
-    const text = (description || "").trim();
-    if (!text) {
-        return;
-    }
-
+function setupDescriptionTooltip(windowElement, description, toggleButton, title) {
     const tooltip = document.createElement("div");
     tooltip.className = "art-window__tooltip";
-    tooltip.textContent = text;
     tooltip.setAttribute("role", "status");
     tooltip.hidden = true;
     windowElement.appendChild(tooltip);
 
     let pinned = false;
     let hoverTimeout = null;
+    let currentDescription = "";
 
     const showTooltip = () => {
         tooltip.hidden = false;
@@ -617,7 +681,7 @@ function setupDescriptionTooltip(windowElement, description, toggleButton) {
     };
 
     const queueTooltip = () => {
-        if (pinned) {
+        if (pinned || !currentDescription) {
             return;
         }
         if (hoverTimeout !== null) {
@@ -630,6 +694,9 @@ function setupDescriptionTooltip(windowElement, description, toggleButton) {
     };
 
     const togglePinned = () => {
+        if (!currentDescription) {
+            return;
+        }
         pinned = !pinned;
         toggleButton?.classList.toggle("is-active", pinned);
         if (pinned) {
@@ -655,6 +722,26 @@ function setupDescriptionTooltip(windowElement, description, toggleButton) {
     windowElement.addEventListener("focusin", queueTooltip);
     windowElement.addEventListener("focusout", hideTooltip);
     windowElement.addEventListener("pointerdown", hideTooltip);
+
+    const update = (nextDescription, nextTitle) => {
+        currentDescription = `${nextDescription || ""}`.trim();
+        tooltip.textContent = currentDescription;
+        if (toggleButton) {
+            toggleButton.hidden = !currentDescription;
+            toggleButton.setAttribute(
+                "aria-label",
+                `toggle description for ${nextTitle || title || "portfolio media"}`
+            );
+        }
+        if (!currentDescription) {
+            pinned = false;
+            toggleButton?.classList.remove("is-active");
+            hideTooltip(true);
+        }
+    };
+
+    update(description, title);
+    return { update };
 }
 
 function hydrateEmbedPreview(config, preview) {
@@ -779,6 +866,7 @@ function renderSelectedMedia(windowElement, state) {
         return;
     }
 
+    syncSelectedMediaMetadata(windowElement, state);
     teardownMediaElement(state);
     if (state.errorElement) {
         state.errorElement.hidden = true;
@@ -978,6 +1066,43 @@ function getSelectedMediaItem(state) {
     const index = clamp(Math.round(state.mediaIndex || 0), 0, items.length - 1);
     state.mediaIndex = index;
     return items[index] || null;
+}
+
+function syncSelectedMediaMetadata(windowElement, state) {
+    if (!windowElement || !state || !hasDynamicMediaMetadata(state.config)) {
+        return;
+    }
+
+    const mediaItem = getSelectedMediaItem(state);
+    const metadata = getMediaMetadata(state.config, mediaItem);
+    const titleElement = state.mediaTitleElement || windowElement.querySelector(".art-window__media-title");
+    const tagsElement = state.mediaTagsElement || windowElement.querySelector(".art-window__media-heading .art-window__tags");
+
+    if (titleElement) {
+        titleElement.textContent = metadata.title;
+        state.mediaTitleElement = titleElement;
+    }
+    if (tagsElement) {
+        updateTagList(tagsElement, metadata.tags);
+        state.mediaTagsElement = tagsElement;
+    }
+
+    state.descriptionController?.update(metadata.description, metadata.title);
+    windowElement.setAttribute("aria-label", `${state.config.title}: ${metadata.title}`);
+
+    const controlLabels = [
+        [".art-window__control--media-previous, .art-window__carousel-button--previous", "previous"],
+        [".art-window__control--media-next, .art-window__carousel-button--next", "next"]
+    ];
+
+    controlLabels.forEach(([selector, direction]) => {
+        windowElement.querySelectorAll(selector).forEach((button) => {
+            button.setAttribute(
+                "aria-label",
+                `${direction} media in ${state.config.title}; current item ${metadata.title}`
+            );
+        });
+    });
 }
 
 function cycleWindowMedia(windowElement, configId, direction) {
@@ -1366,6 +1491,9 @@ function ensureWindowState(configId) {
             mediaWarningElement: null,
             mediaIndex: 0,
             mediaDimensions: new Map(),
+            mediaTitleElement: null,
+            mediaTagsElement: null,
+            descriptionController: null,
             viewport: null,
             viewportHost: null,
             mounted: false,
@@ -1868,7 +1996,7 @@ function applyMediaAspectFitPlacement(windowElement, aspectRatio) {
     const safeAspectRatio = aspectRatio > 0 ? aspectRatio : DEFAULT_MEDIA_ASPECT_RATIO;
     const gutter = WINDOW_EDGE_GUTTER;
     const bottomClearance = getAudioPlayerClearance(false);
-    const header = windowElement.querySelector(".art-window__header");
+    const header = windowElement.querySelector(".art-window__chrome") || windowElement.querySelector(".art-window__header");
     const headerRect = header?.getBoundingClientRect();
     const headerHeight = Math.max(headerRect?.height || header?.offsetHeight || 0, 0);
     const availableWidth = Math.max(window.innerWidth - gutter * 2, WINDOW_MIN_WIDTH);
@@ -1905,7 +2033,7 @@ function applyPreviewMediaPlacement(windowElement, aspectRatio) {
     const safeAspectRatio = aspectRatio > 0 ? aspectRatio : DEFAULT_MEDIA_ASPECT_RATIO;
     const gutter = WINDOW_EDGE_GUTTER;
     const rect = windowElement.getBoundingClientRect();
-    const header = windowElement.querySelector(".art-window__header");
+    const header = windowElement.querySelector(".art-window__chrome") || windowElement.querySelector(".art-window__header");
     const headerRect = header?.getBoundingClientRect();
     const headerHeight = Math.max(headerRect?.height || header?.offsetHeight || 0, 0);
     const bottomClearance = Math.max(getAudioPlayerClearance(), gutter * 2);

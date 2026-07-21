@@ -1,52 +1,68 @@
 export const workWindowConfig = [
     {
         id: "blare-db",
-        title: "blare.db/bodyrave",
-        tags: ["live", "experience", "av"],
-        description: "blare.db/bodyrave window hosts live documentation and bodyrave visual pieces",
+        title: "design:live",
+        description: "live documentation and visual work from blare.db and bodyrave",
         type: "media",
         mediaItems: [
             {
                 type: "youtube",
                 src: "https://www.youtube.com/watch?v=BXqkB73kWzo&t=1s",
                 title: "blare.db",
+                tags: ["live", "experience", "av"],
+                description: "blare.db live set documentation",
                 aspectRatio: "16/9"
             },
             {
                 type: "youtube",
                 src: "https://www.youtube.com/watch?v=RioNTwwQgWc",
                 title: "bodyrave",
+                tags: ["live", "experience", "av"],
+                description: "bodyrave live visual documentation",
                 aspectRatio: "16/9"
             },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/blaredb-cyber.mp4",
-                title: "blaredb cyber"
+                title: "blaredb cyber",
+                tags: ["marketing", "video creation", "av"],
+                description: "blare.db cyber promotional video"
             },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/blaredb-recap.mp4",
-                title: "blaredb recap"
+                title: "blaredb recap",
+                tags: ["live", "recap", "video"],
+                description: "blare.db event recap"
             },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/bodyrave-indoorad.mp4",
-                title: "bodyrave indoor ad"
+                title: "bodyrave indoor ad",
+                tags: ["marketing", "video creation", "indoor"],
+                description: "bodyrave indoor campaign video"
             },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/bodyrave-outdoor.mp4",
-                title: "bodyrave outdoor"
+                title: "bodyrave outdoor",
+                tags: ["marketing", "video creation", "outdoor"],
+                description: "bodyrave outdoor campaign video"
             },
             {
                 type: "image",
                 src: "https://stjaudio.b-cdn.net/video/posterblare.db.jpg",
-                alt: "posterblare.db artwork"
+                title: "blare.db poster",
+                alt: "blare.db event poster",
+                tags: ["graphic design", "poster", "marketing"],
+                description: "blare.db event poster"
             },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/strobe-bodyrave.mp4",
                 title: "strobe bodyrave",
+                tags: ["live", "visuals", "strobe"],
+                description: "bodyrave strobe visual",
                 strobeWarning: true,
                 warningText: "strobe warning: continue?"
             }
@@ -57,52 +73,37 @@ export const workWindowConfig = [
         previewGradient: "linear-gradient(135deg, rgba(80,80,80,0.25), rgba(255,255,255,0.1))"
     },
     {
-        id: "crsvr",
-        title: "crsvr",
-        tags: ["video", "installation"],
-        description: "documentation of the crsvr installation captured for quick preview",
-        type: "embed",
-        videoSrc: "https://stjaudio.b-cdn.net/video/minimarquenort.mp4",
-        initialPosition: { x: 360, y: 260 },
-        initialSize: { width: 520, height: 320 },
-        hint: "preview crsvr",
-        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(0,0,0,0.25))"
-    },
-    {
-        id: "bibistar",
-        title: "bibistar",
-        tags: ["marketing", "video creation"],
-        description: "bibistar marketing video portfolio piece",
+        id: "design-marketing",
+        title: "design:marketing",
+        description: "selected marketing, installation, and video work",
         type: "media",
         mediaItems: [
+            {
+                type: "video",
+                src: "https://stjaudio.b-cdn.net/video/minimarquenort.mp4",
+                title: "crsvr",
+                tags: ["video", "installation"],
+                description: "documentation of the crsvr installation captured for quick preview"
+            },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/bibiportfolio.mov",
-                title: "bibistar"
-            }
-        ],
-        initialPosition: { x: 560, y: 170 },
-        initialSize: { width: 520, height: 320 },
-        hint: "preview bibistar",
-        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.14), rgba(124,242,156,0.12))"
-    },
-    {
-        id: "whocares",
-        title: "whocares",
-        tags: ["marketing", "video creation"],
-        description: "whocares marketing video portfolio piece",
-        type: "media",
-        mediaItems: [
+                title: "bibistar",
+                tags: ["marketing", "video creation"],
+                description: "bibistar marketing video portfolio piece"
+            },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/whocaresbrandadfinal4.3.mov",
-                title: "whocares"
+                title: "whocares",
+                tags: ["marketing", "video creation"],
+                description: "whocares marketing video portfolio piece"
             }
         ],
-        initialPosition: { x: 90, y: 390 },
+        initialPosition: { x: 360, y: 260 },
         initialSize: { width: 520, height: 320 },
-        hint: "preview whocares",
-        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.12), rgba(110,168,255,0.14))"
+        hint: "view design:marketing",
+        previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.22), rgba(0,0,0,0.25))"
     },
     {
         id: "thx4cmn-com",

@@ -748,6 +748,11 @@ html[data-page="music"] [data-background-canvas] {
     background: var(--window-active-viewport);
 }
 
+.art-window__chrome {
+    display: grid;
+    min-width: 0;
+}
+
 .art-window__header {
     display: flex;
     align-items: center;
@@ -772,13 +777,38 @@ html[data-page="music"] [data-background-canvas] {
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
+    min-width: 0;
 }
 
 .art-window__title {
     font-size: 0.95rem;
     margin: 0;
-    text-transform: uppercase;
+    text-transform: lowercase;
     letter-spacing: 0.2em;
+}
+
+.art-window__media-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    min-width: 0;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid var(--divider-color);
+    background: rgba(0, 0, 0, 0.08);
+}
+
+.art-window__media-title {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    text-transform: lowercase;
+}
+
+.art-window__media-heading .art-window__tags {
+    min-width: 0;
 }
 
 .art-window__tags {
@@ -824,6 +854,7 @@ html[data-page="music"] [data-background-canvas] {
     display: flex;
     align-items: center;
     gap: 0.4rem;
+    flex: 0 0 auto;
 }
 
 .art-window__control {
@@ -1229,7 +1260,7 @@ html[data-page="music"] [data-background-canvas] {
     inset: auto 1rem 1rem auto;
     font-size: 0.65rem;
     letter-spacing: 0.2em;
-    text-transform: uppercase;
+    text-transform: lowercase;
     opacity: 0.6;
     transition: opacity 0.3s ease;
     z-index: 2;
@@ -1448,5 +1479,21 @@ html[data-page="music"] [data-background-canvas] {
         min-height: clamp(220px, 60vh, 360px);
         scroll-snap-align: center;
         margin: 0 auto;
+    }
+
+    .art-window.has-dynamic-media-metadata .art-window__header {
+        align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        padding: 0.65rem 0.75rem;
+    }
+
+    .art-window.has-dynamic-media-metadata .art-window__controls {
+        margin-left: auto;
+    }
+
+    .art-window__media-heading {
+        align-items: flex-start;
+        padding: 0.5rem 0.75rem;
     }
 }
