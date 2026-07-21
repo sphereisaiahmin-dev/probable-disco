@@ -32,6 +32,12 @@ test('home renders about dialog and external github control', async () => {
     assert.match(response.text, /with Particle Ink/);
     assert.match(response.text, /at Lumen &amp; Forge/);
     assert.ok(response.text.includes(versionedAsset('/js/about-dialog.js')));
+
+    const githubPosition = response.text.indexOf('aria-label="github profile for saintjustus"');
+    const aboutPosition = response.text.indexOf('data-about-open');
+    const brandPosition = response.text.indexOf('class="site-brand"');
+    const themePosition = response.text.indexOf('data-theme-toggle');
+    assert.ok(githubPosition < aboutPosition && aboutPosition < brandPosition && brandPosition < themePosition);
 });
 
 test('returns fragment payloads for shell requests', async () => {
