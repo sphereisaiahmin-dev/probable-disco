@@ -20,6 +20,20 @@ test('serves the shared layout for static routes', async () => {
     assert.ok(response.text.includes('data-window-layer="work"'));
 });
 
+test('home renders about dialog and external github control', async () => {
+    const response = await request(app).get('/').expect(200).expect('Content-Type', /html/);
+
+    assert.match(response.text, /data-about-open/);
+    assert.match(response.text, /data-about-dialog/);
+    assert.match(response.text, /href="https:\/\/github\.com\/saintjustus"/);
+    assert.match(response.text, /target="_blank"/);
+    assert.match(response.text, /rel="noopener noreferrer"/);
+    assert.match(response.text, /aria-label="github profile for saintjustus"/);
+    assert.match(response.text, /with Particle Ink/);
+    assert.match(response.text, /at Lumen &amp; Forge/);
+    assert.ok(response.text.includes(versionedAsset('/js/about-dialog.js')));
+});
+
 test('returns fragment payloads for shell requests', async () => {
     const response = await request(app)
         .get('/music')

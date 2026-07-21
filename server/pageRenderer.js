@@ -129,6 +129,7 @@ function renderFullDocument(pagePayload) {
         jsAppShell: buildAssetUrl('/js/app-shell.js'),
         jsThemeToggle: buildAssetUrl('/js/theme-toggle.js'),
         jsBackgroundScenes: buildAssetUrl('/js/background-scenes.js'),
+        jsAboutDialog: buildAssetUrl('/js/about-dialog.js'),
         metaImage: buildAssetUrl('/screenshot.png'),
         'raw:content': pagePayload.content,
         'raw:pageBootstrap': bootstrapScript,
