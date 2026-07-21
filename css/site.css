@@ -421,15 +421,20 @@ canvas {
     position: fixed;
     top: clamp(1.5rem, 5vw, 2.75rem);
     right: clamp(1.5rem, 5vw, 2.75rem);
+    left: clamp(1.5rem, 5vw, 2.75rem);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+    z-index: 3;
+    transition: opacity 0.45s ease;
+}
+
+.site-header__group {
     display: flex;
     align-items: center;
     gap: clamp(0.35rem, 1.5vw, 0.75rem);
-    max-width: calc(100vw - clamp(3rem, 10vw, 5.5rem));
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    pointer-events: auto;
-    z-index: 3;
-    transition: opacity 0.45s ease;
+    pointer-events: none;
 }
 
 .site-brand {
@@ -626,10 +631,6 @@ html[data-page="home"] .site-header__control[data-home-header-control] {
 }
 
 @media (max-width: 480px) {
-    .site-header {
-        max-width: calc(100vw - 2rem);
-    }
-
     .site-header__control {
         min-height: 2.5rem;
     }
@@ -1562,6 +1563,7 @@ html[data-page="music"] [data-background-canvas] {
     .site-header {
         top: clamp(0.75rem, 4vw, 1.25rem);
         right: clamp(0.75rem, 4vw, 1.25rem);
+        left: clamp(0.75rem, 4vw, 1.25rem);
         gap: 0.5rem;
     }
 

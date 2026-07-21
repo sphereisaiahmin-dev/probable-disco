@@ -25,6 +25,8 @@ test('home renders about dialog and external github control', async () => {
 
     assert.match(response.text, /data-about-open/);
     assert.match(response.text, /data-about-dialog/);
+    assert.match(response.text, /site-header__group--left/);
+    assert.match(response.text, /site-header__group--right/);
     assert.match(response.text, /href="https:\/\/github\.com\/saintjustus"/);
     assert.match(response.text, /target="_blank"/);
     assert.match(response.text, /rel="noopener noreferrer"/);
