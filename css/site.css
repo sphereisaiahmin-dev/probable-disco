@@ -455,6 +455,10 @@ canvas {
     pointer-events: none;
 }
 
+.art-window-active .site-header {
+    pointer-events: none;
+}
+
 .art-window-active .theme-toggle {
     opacity: 0;
     pointer-events: none;
