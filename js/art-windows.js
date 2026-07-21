@@ -34,6 +34,9 @@ const WINDOW_REVEAL_DELAY = 200;
 const VIDEO_DEFAULT_RATE = 1;
 const VIDEO_HOVER_RATE = 1.5;
 const DEFAULT_MEDIA_ASPECT_RATIO = 16 / 9;
+const CAROUSEL_MIN_WIDTH = 340;
+const MEDIA_GEOMETRY_DURATION = 420;
+const MEDIA_FADE_DURATION = 220;
 
 const placementCache = new Map();
 const floatingWindows = new Set();
@@ -227,6 +230,8 @@ function normaliseYouTubeEmbedUrl(src) {
     embedUrl.searchParams.set("rel", "0");
     embedUrl.searchParams.set("modestbranding", "1");
     embedUrl.searchParams.set("playsinline", "1");
+    embedUrl.searchParams.set("enablejsapi", "1");
+    embedUrl.searchParams.set("origin", window.location.origin);
     return embedUrl.toString();
 }
 
@@ -400,6 +405,7 @@ function createWindowElement(config) {
     controls.className = "art-window__controls";
     controls.addEventListener("pointerdown", (event) => {
         event.stopPropagation();
+        bringToFront(windowElement);
     });
 
     let descriptionToggle = null;
@@ -574,6 +580,7 @@ function createMediaControls(config, windowElement) {
     controls.className = "art-window__carousel";
     controls.addEventListener("pointerdown", (event) => {
         event.stopPropagation();
+        bringToFront(windowElement);
     });
 
     const actions = [
@@ -848,52 +855,197 @@ function attachVideoPreview(windowElement, state) {
 }
 
 function attachMediaPreview(windowElement, state) {
-    if (!state?.viewport || state.mediaElement || !hasMediaItems(state.config)) {
-        return;
-    }
-
-    renderSelectedMedia(windowElement, state);
-}
-
-function renderSelectedMedia(windowElement, state) {
     if (!state?.viewport || !hasMediaItems(state.config)) {
         return;
     }
 
-    const mediaItem = getSelectedMediaItem(state);
-    if (!mediaItem) {
-        showError(state.viewportHost, state, "media unavailable");
+    requestMediaSelection(windowElement, state, state.mediaIndex, { initial: !state.mediaElement });
+}
+
+function requestMediaSelection(windowElement, state, targetIndex, { initial = false } = {}) {
+    if (!windowElement || !state || !hasMediaItems(state.config)) {
         return;
     }
 
-    syncSelectedMediaMetadata(windowElement, state);
-    teardownMediaElement(state);
+    const total = state.config.mediaItems.length;
+    state.desiredMediaIndex = ((Math.round(targetIndex) % total) + total) % total;
+    if (!windowElement.isConnected) {
+        requestAnimationFrame(() => {
+            requestMediaSelection(windowElement, state, state.desiredMediaIndex, { initial });
+        });
+        return;
+    }
+    if (!state.mediaTransitionInProgress) {
+        processMediaSelectionQueue(windowElement, state, { initial });
+    }
+}
+
+async function processMediaSelectionQueue(windowElement, state, { initial = false } = {}) {
+    if (state.mediaTransitionInProgress) {
+        return;
+    }
+
+    state.mediaTransitionInProgress = true;
+    windowElement.setAttribute("aria-busy", "true");
+
+    try {
+        let firstSelection = initial;
+        while (windowElement.isConnected) {
+            const targetIndex = state.desiredMediaIndex;
+            const currentEntry = state.mediaElement ? state.mediaEntries.get(state.mediaIndex) : null;
+            if (currentEntry?.element === state.mediaElement && state.mediaIndex === targetIndex) {
+                break;
+            }
+
+            let targetEntry;
+            try {
+                targetEntry = ensureMediaEntry(windowElement, state, targetIndex);
+                await targetEntry.readyPromise;
+            } catch (error) {
+                if (state.desiredMediaIndex === targetIndex) {
+                    state.desiredMediaIndex = state.mediaElement ? state.mediaIndex : 0;
+                    showError(state.viewportHost, state, "media unavailable");
+                }
+                if (!state.mediaElement || state.desiredMediaIndex === targetIndex) {
+                    break;
+                }
+                continue;
+            }
+
+            if (state.desiredMediaIndex !== targetIndex) {
+                continue;
+            }
+
+            await activateMediaEntry(windowElement, state, targetEntry, { initial: firstSelection });
+            firstSelection = false;
+            if (state.desiredMediaIndex === state.mediaIndex) {
+                break;
+            }
+        }
+    } finally {
+        state.mediaTransitionInProgress = false;
+        windowElement.removeAttribute("aria-busy");
+        windowElement.classList.remove("is-media-transitioning");
+    }
+}
+
+function ensureMediaEntry(windowElement, state, mediaIndex) {
+    if (state.mediaEntries.has(mediaIndex)) {
+        return state.mediaEntries.get(mediaIndex);
+    }
+
+    const mediaItem = state.config.mediaItems[mediaIndex];
+    if (!mediaItem) {
+        throw new Error(`missing media item ${mediaIndex}`);
+    }
+
+    let resolveReady;
+    let rejectReady;
+    const entry = {
+        index: mediaIndex,
+        item: mediaItem,
+        element: null,
+        ready: false,
+        failed: false,
+        readyPromise: new Promise((resolve, reject) => {
+            resolveReady = resolve;
+            rejectReady = reject;
+        }),
+        resolveReady,
+        rejectReady
+    };
+
+    const mediaElement =
+        mediaItem.type === "image"
+            ? createMediaImageElement(windowElement, state, mediaItem, entry)
+            : mediaItem.type === "embed"
+            ? createMediaEmbedElement(windowElement, state, mediaItem, entry)
+            : createMediaVideoElement(windowElement, state, mediaItem, entry);
+
+    entry.element = mediaElement;
+    mediaElement.dataset.mediaIndex = mediaIndex.toString();
+    mediaElement.classList.add("is-media-cached", "is-media-hidden");
+    mediaElement.setAttribute("aria-hidden", "true");
+    mediaElement.inert = true;
+    state.viewport.appendChild(mediaElement);
+    state.mediaEntries.set(mediaIndex, entry);
+    return entry;
+}
+
+function markMediaEntryReady(state, entry, width = 0, height = 0) {
+    if (!entry || entry.ready || entry.failed) {
+        return;
+    }
+    if (width > 0 && height > 0) {
+        recordMediaDimensions(state, entry.item, width, height);
+    }
+    entry.ready = true;
+    entry.resolveReady(entry);
+    markPreviewLive(state.previewElement);
+}
+
+function markMediaEntryFailed(state, entry) {
+    if (!entry || entry.ready || entry.failed) {
+        return;
+    }
+    entry.failed = true;
+    entry.rejectReady(new Error("media unavailable"));
+    teardownMediaEntry(entry);
+    state.mediaEntries.delete(entry.index);
+}
+
+async function activateMediaEntry(windowElement, state, targetEntry, { initial = false } = {}) {
+    const previousEntry = state.mediaElement ? state.mediaEntries.get(state.mediaIndex) : null;
+    const hasPrevious = Boolean(previousEntry && previousEntry !== targetEntry);
+
+    clearMediaWarning(state);
     if (state.errorElement) {
         state.errorElement.hidden = true;
     }
 
-    const mediaElement =
-        mediaItem.type === "image"
-            ? createMediaImageElement(windowElement, state, mediaItem)
-            : mediaItem.type === "embed"
-            ? createMediaEmbedElement(windowElement, state, mediaItem)
-            : createMediaVideoElement(windowElement, state, mediaItem);
+    if (hasPrevious) {
+        pauseMediaEntry(previousEntry);
+        previousEntry.element.classList.add("is-media-leaving");
+        previousEntry.element.classList.remove("is-media-active");
+        previousEntry.element.setAttribute("aria-hidden", "true");
+        previousEntry.element.inert = true;
+    }
 
-    mediaElement.dataset.mediaIndex = state.mediaIndex.toString();
-    state.viewport.appendChild(mediaElement);
-    state.mediaElement = mediaElement;
+    targetEntry.element.classList.remove("is-media-hidden", "is-media-leaving");
+    targetEntry.element.setAttribute("aria-hidden", "false");
+    targetEntry.element.inert = false;
+    void targetEntry.element.offsetWidth;
+
+    state.mediaIndex = targetEntry.index;
+    state.mediaElement = targetEntry.element;
     state.mounted = true;
-    attachMediaWarning(state, mediaItem);
+    syncSelectedMediaMetadata(windowElement, state);
+
+    if (hasPrevious && !initial) {
+        windowElement.classList.add("is-media-transitioning");
+    }
+    targetEntry.element.classList.add("is-media-active");
+    attachMediaWarning(state, targetEntry.item);
     applyMediaSelectionPlacement(windowElement, state);
+    resumeMediaEntry(state, targetEntry);
+
+    const duration = hasPrevious && !initial ? Math.max(MEDIA_GEOMETRY_DURATION, MEDIA_FADE_DURATION) : 0;
+    await waitForMotion(duration);
+
+    if (hasPrevious) {
+        previousEntry.element.classList.remove("is-media-leaving");
+        previousEntry.element.classList.add("is-media-hidden");
+    }
+    windowElement.classList.remove("is-media-transitioning");
 }
 
-function createMediaVideoElement(windowElement, state, mediaItem) {
+function createMediaVideoElement(windowElement, state, mediaItem, entry) {
     const video = document.createElement("video");
     video.className = "art-window__media art-window__media--video";
     video.loop = true;
     video.muted = true;
     video.playsInline = true;
-    video.autoplay = !requiresMediaConfirmation(mediaItem);
+    video.autoplay = false;
     video.preload = "auto";
     video.controls = false;
     video.playbackRate = VIDEO_DEFAULT_RATE;
@@ -905,28 +1057,137 @@ function createMediaVideoElement(windowElement, state, mediaItem) {
         "loadedmetadata",
         () => {
             recordMediaDimensions(state, mediaItem, video.videoWidth, video.videoHeight);
-            applyMediaSelectionPlacement(windowElement, state);
         },
         { once: true }
     );
     video.addEventListener(
         "loadeddata",
         () => {
-            if (requiresMediaConfirmation(mediaItem)) {
-                video.pause();
-            } else {
-                ensureMediaPlayback(state);
-            }
-            markPreviewLive(state.previewElement);
+            markMediaEntryReady(state, entry, video.videoWidth, video.videoHeight);
         },
         { once: true }
     );
     video.addEventListener("error", () => {
-        showError(state.viewportHost, state, "media unavailable");
+        markMediaEntryFailed(state, entry);
     });
     video.src = mediaItem.src;
 
     return video;
+}
+
+function createMediaImageElement(windowElement, state, mediaItem, entry) {
+    const image = document.createElement("img");
+    image.className = "art-window__media art-window__media--image";
+    image.alt = mediaItem.alt || state.config.title || "portfolio media";
+    image.decoding = "async";
+    image.loading = "lazy";
+    image.addEventListener(
+        "load",
+        () => {
+            markMediaEntryReady(state, entry, image.naturalWidth, image.naturalHeight);
+        },
+        { once: true }
+    );
+    image.addEventListener("error", () => {
+        markMediaEntryFailed(state, entry);
+    });
+    image.src = mediaItem.src;
+
+    return image;
+}
+
+function createMediaEmbedElement(windowElement, state, mediaItem, entry) {
+    const iframe = document.createElement("iframe");
+    iframe.className = "art-window__media art-window__media--embed";
+    iframe.src = mediaItem.embedUrl || normaliseYouTubeEmbedUrl(mediaItem.src);
+    iframe.loading = "lazy";
+    iframe.title = mediaItem.title || mediaItem.alt || state.config.title || "embedded media";
+    iframe.allowFullscreen = mediaItem.allowFullscreen !== false;
+    iframe.setAttribute(
+        "allow",
+        mediaItem.allow ||
+            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    );
+    iframe.referrerPolicy = mediaItem.referrerPolicy || "strict-origin-when-cross-origin";
+    iframe.addEventListener(
+        "load",
+        () => {
+            markMediaEntryReady(state, entry);
+        },
+        { once: true }
+    );
+    iframe.addEventListener("error", () => {
+        markMediaEntryFailed(state, entry);
+    });
+
+    return iframe;
+}
+
+function pauseMediaEntry(entry) {
+    const mediaElement = entry?.element;
+    if (!mediaElement) {
+        return;
+    }
+    if (mediaElement.tagName === "VIDEO") {
+        mediaElement.pause();
+        return;
+    }
+    if (mediaElement.tagName === "IFRAME" && isYouTubeUrl(entry.item.src)) {
+        mediaElement.contentWindow?.postMessage(
+            JSON.stringify({ event: "command", func: "pauseVideo", args: [] }),
+            "*"
+        );
+    }
+}
+
+function resumeMediaEntry(state, entry) {
+    if (!entry?.element || entry.element.tagName !== "VIDEO" || requiresMediaConfirmation(entry.item)) {
+        return;
+    }
+    entry.element.playbackRate = VIDEO_DEFAULT_RATE;
+    const playPromise = entry.element.play();
+    if (playPromise?.catch) {
+        playPromise.catch(() => {
+            /* autoplay restrictions */
+        });
+    }
+}
+
+function teardownMediaEntry(entry) {
+    const mediaElement = entry?.element;
+    if (!mediaElement) {
+        return;
+    }
+    pauseMediaEntry(entry);
+    if (mediaElement.tagName === "VIDEO") {
+        mediaElement.removeAttribute("src");
+        if (typeof mediaElement.load === "function") {
+            mediaElement.load();
+        }
+    }
+    mediaElement.remove();
+}
+
+function teardownMediaElement(state) {
+    clearMediaWarning(state);
+    state?.mediaEntries?.forEach((entry) => {
+        teardownMediaEntry(entry);
+    });
+    state?.mediaEntries?.clear();
+    if (state) {
+        state.mediaElement = null;
+        state.mediaTransitionInProgress = false;
+        state.desiredMediaIndex = state.mediaIndex;
+    }
+}
+
+function waitForMotion(duration) {
+    if (duration <= 0 || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, duration);
+    });
 }
 
 function attachMediaWarning(state, mediaItem) {
@@ -987,75 +1248,6 @@ function getMediaWarningText(mediaItem) {
     return `${mediaItem?.warningText || "strobe warning: continue?"}`;
 }
 
-function createMediaImageElement(windowElement, state, mediaItem) {
-    const image = document.createElement("img");
-    image.className = "art-window__media art-window__media--image";
-    image.alt = mediaItem.alt || state.config.title || "portfolio media";
-    image.decoding = "async";
-    image.loading = "lazy";
-    image.addEventListener(
-        "load",
-        () => {
-            recordMediaDimensions(state, mediaItem, image.naturalWidth, image.naturalHeight);
-            markPreviewLive(state.previewElement);
-            applyMediaSelectionPlacement(windowElement, state);
-        },
-        { once: true }
-    );
-    image.addEventListener("error", () => {
-        showError(state.viewportHost, state, "media unavailable");
-    });
-    image.src = mediaItem.src;
-
-    return image;
-}
-
-function createMediaEmbedElement(windowElement, state, mediaItem) {
-    const iframe = document.createElement("iframe");
-    iframe.className = "art-window__media art-window__media--embed";
-    iframe.src = mediaItem.embedUrl || normaliseYouTubeEmbedUrl(mediaItem.src);
-    iframe.loading = "lazy";
-    iframe.title = mediaItem.title || mediaItem.alt || state.config.title || "embedded media";
-    iframe.allowFullscreen = mediaItem.allowFullscreen !== false;
-    iframe.setAttribute(
-        "allow",
-        mediaItem.allow ||
-            "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    );
-    iframe.referrerPolicy = mediaItem.referrerPolicy || "strict-origin-when-cross-origin";
-    iframe.addEventListener(
-        "load",
-        () => {
-            markPreviewLive(state.previewElement);
-            applyMediaSelectionPlacement(windowElement, state);
-        },
-        { once: true }
-    );
-    iframe.addEventListener("error", () => {
-        showError(state.viewportHost, state, "embed unavailable");
-    });
-
-    return iframe;
-}
-
-function teardownMediaElement(state) {
-    const mediaElement = state?.mediaElement;
-    clearMediaWarning(state);
-    if (!mediaElement) {
-        return;
-    }
-
-    if (mediaElement.tagName === "VIDEO") {
-        mediaElement.pause();
-        mediaElement.removeAttribute("src");
-        if (typeof mediaElement.load === "function") {
-            mediaElement.load();
-        }
-    }
-
-    mediaElement.remove();
-    state.mediaElement = null;
-}
 
 function getSelectedMediaItem(state) {
     if (!hasMediaItems(state?.config)) {
@@ -1112,8 +1304,8 @@ function cycleWindowMedia(windowElement, configId, direction) {
     }
 
     const total = state.config.mediaItems.length;
-    state.mediaIndex = (state.mediaIndex + direction + total) % total;
-    renderSelectedMedia(windowElement, state);
+    const queuedIndex = Number.isInteger(state.desiredMediaIndex) ? state.desiredMediaIndex : state.mediaIndex;
+    requestMediaSelection(windowElement, state, (queuedIndex + direction + total) % total);
 }
 
 function recordMediaDimensions(state, mediaItem, width, height) {
@@ -1490,10 +1682,16 @@ function ensureWindowState(configId) {
             mediaElement: null,
             mediaWarningElement: null,
             mediaIndex: 0,
+            desiredMediaIndex: 0,
+            mediaEntries: new Map(),
+            mediaTransitionInProgress: false,
             mediaDimensions: new Map(),
             mediaTitleElement: null,
             mediaTagsElement: null,
             descriptionController: null,
+            previewReferenceWidth: Number(config.initialSize?.width) || WINDOW_DEFAULT_WIDTH,
+            previewReferenceViewportHeight:
+                (Number(config.initialSize?.width) || WINDOW_DEFAULT_WIDTH) / DEFAULT_MEDIA_ASPECT_RATIO,
             viewport: null,
             viewportHost: null,
             mounted: false,
@@ -1954,11 +2152,11 @@ function applyMediaSelectionPlacement(windowElement, state) {
 
     const aspectRatio = getSelectedMediaAspectRatio(state);
     if (windowElement.classList.contains("is-active")) {
-        applyMediaAspectFitPlacement(windowElement, aspectRatio);
+        applyMediaAspectFitPlacement(windowElement, state, aspectRatio);
         return;
     }
 
-    applyPreviewMediaPlacement(windowElement, aspectRatio);
+    applyPreviewMediaPlacement(windowElement, state, aspectRatio);
 }
 
 function getSelectedMediaAspectRatio(state) {
@@ -1992,29 +2190,46 @@ function parseAspectRatio(value) {
     return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
-function applyMediaAspectFitPlacement(windowElement, aspectRatio) {
+function getWindowChromeHeight(windowElement) {
+    const chrome = windowElement.querySelector(".art-window__chrome") || windowElement.querySelector(".art-window__header");
+    const chromeRect = chrome?.getBoundingClientRect();
+    return Math.max(chromeRect?.height || chrome?.offsetHeight || 0, 0);
+}
+
+function getWindowMinimumWidth(windowElement, availableWidth = Number.POSITIVE_INFINITY) {
+    const configuredMinimum = windowElement.classList.contains("has-media-carousel")
+        ? CAROUSEL_MIN_WIDTH
+        : WINDOW_MIN_WIDTH;
+    return Math.min(configuredMinimum, availableWidth);
+}
+
+function applyMediaAspectFitPlacement(windowElement, state, aspectRatio) {
     const safeAspectRatio = aspectRatio > 0 ? aspectRatio : DEFAULT_MEDIA_ASPECT_RATIO;
     const gutter = WINDOW_EDGE_GUTTER;
     const bottomClearance = getAudioPlayerClearance(false);
-    const header = windowElement.querySelector(".art-window__chrome") || windowElement.querySelector(".art-window__header");
-    const headerRect = header?.getBoundingClientRect();
-    const headerHeight = Math.max(headerRect?.height || header?.offsetHeight || 0, 0);
     const availableWidth = Math.max(window.innerWidth - gutter * 2, WINDOW_MIN_WIDTH);
     const availableWindowHeight = Math.max(window.innerHeight - bottomClearance - gutter * 2, WINDOW_MIN_HEIGHT);
+    const minimumWidth = getWindowMinimumWidth(windowElement, availableWidth);
+
+    let headerHeight = getWindowChromeHeight(windowElement);
+    let viewportHeight = Math.max(availableWindowHeight - headerHeight, WINDOW_MIN_HEIGHT);
+    let viewportWidth = clamp(viewportHeight * safeAspectRatio, minimumWidth, availableWidth);
+
+    // Header wrapping changes with width. Measure again before committing the final viewport height.
+    windowElement.style.width = `${Math.round(viewportWidth)}px`;
+    headerHeight = getWindowChromeHeight(windowElement);
     const availableViewportHeight = Math.max(availableWindowHeight - headerHeight, WINDOW_MIN_HEIGHT);
-
-    let viewportWidth = availableWidth;
-    let viewportHeight = viewportWidth / safeAspectRatio;
-
-    if (viewportHeight > availableViewportHeight) {
+    viewportHeight = Math.min(availableViewportHeight, viewportWidth / safeAspectRatio);
+    if (viewportWidth === minimumWidth && viewportWidth / safeAspectRatio > availableViewportHeight) {
         viewportHeight = availableViewportHeight;
-        viewportWidth = viewportHeight * safeAspectRatio;
+    } else {
+        viewportWidth = clamp(viewportHeight * safeAspectRatio, minimumWidth, availableWidth);
     }
 
-    viewportWidth = clamp(viewportWidth, WINDOW_MIN_WIDTH, availableWidth);
-
     const width = Math.round(viewportWidth);
-    const height = Math.round(viewportHeight + headerHeight);
+    windowElement.style.width = `${width}px`;
+    headerHeight = getWindowChromeHeight(windowElement);
+    const height = Math.round(Math.min(viewportHeight + headerHeight, availableWindowHeight));
     const maxLeft = Math.max(window.innerWidth - width - gutter, 0);
     const maxTop = Math.max(window.innerHeight - bottomClearance - height - gutter, 0);
     const left = clamp((window.innerWidth - width) / 2, Math.min(gutter, maxLeft), maxLeft);
@@ -2029,32 +2244,35 @@ function applyMediaAspectFitPlacement(windowElement, aspectRatio) {
     windowElement.dataset.expandedHeight = height.toString();
 }
 
-function applyPreviewMediaPlacement(windowElement, aspectRatio) {
+function applyPreviewMediaPlacement(windowElement, state, aspectRatio) {
     const safeAspectRatio = aspectRatio > 0 ? aspectRatio : DEFAULT_MEDIA_ASPECT_RATIO;
     const gutter = WINDOW_EDGE_GUTTER;
     const rect = windowElement.getBoundingClientRect();
-    const header = windowElement.querySelector(".art-window__chrome") || windowElement.querySelector(".art-window__header");
-    const headerRect = header?.getBoundingClientRect();
-    const headerHeight = Math.max(headerRect?.height || header?.offsetHeight || 0, 0);
     const bottomClearance = Math.max(getAudioPlayerClearance(), gutter * 2);
     const availableWidth = Math.max(window.innerWidth - gutter * 2, WINDOW_MIN_WIDTH);
     const availableHeight = Math.max(window.innerHeight - bottomClearance, WINDOW_MIN_HEIGHT);
-    const currentWidth = parseFloat(windowElement.style.width ?? "") || rect.width || WINDOW_DEFAULT_WIDTH;
-
-    let viewportWidth = clamp(currentWidth, WINDOW_MIN_WIDTH, availableWidth);
-    let viewportHeight = viewportWidth / safeAspectRatio;
-    const availableViewportHeight = Math.max(availableHeight - headerHeight, WINDOW_MIN_HEIGHT);
-
-    if (viewportHeight > availableViewportHeight) {
-        viewportHeight = availableViewportHeight;
-        viewportWidth = viewportHeight * safeAspectRatio;
-    }
-
-    viewportWidth = clamp(viewportWidth, WINDOW_MIN_WIDTH, availableWidth);
-    const width = Math.round(viewportWidth);
-    const height = Math.round(clamp(viewportHeight + headerHeight, WINDOW_MIN_HEIGHT, availableHeight));
+    const minimumWidth = getWindowMinimumWidth(windowElement, availableWidth);
+    const referenceWidth = clamp(
+        Number(state.previewReferenceWidth) || WINDOW_DEFAULT_WIDTH,
+        minimumWidth,
+        availableWidth
+    );
+    const referenceViewportHeight = Math.max(
+        Number(state.previewReferenceViewportHeight) || referenceWidth / DEFAULT_MEDIA_ASPECT_RATIO,
+        WINDOW_MIN_HEIGHT
+    );
+    const isPortrait = safeAspectRatio < 1;
+    const targetWidth = isPortrait
+        ? Math.max(minimumWidth, referenceViewportHeight * safeAspectRatio)
+        : referenceWidth;
+    const width = Math.round(clamp(targetWidth, minimumWidth, availableWidth));
 
     windowElement.style.width = `${width}px`;
+    const headerHeight = getWindowChromeHeight(windowElement);
+    const availableViewportHeight = Math.max(availableHeight - headerHeight, WINDOW_MIN_HEIGHT);
+    const viewportHeight = Math.min(referenceViewportHeight, availableViewportHeight);
+    const height = Math.round(clamp(viewportHeight + headerHeight, WINDOW_MIN_HEIGHT, availableHeight));
+
     windowElement.style.height = `${height}px`;
 
     const currentLeft = parseFloat(windowElement.style.left ?? "");
@@ -2083,6 +2301,13 @@ function handleResize() {
             if (config) {
                 applyExpandedPlacement(windowElement, config);
             }
+            return;
+        }
+
+        const configId = windowElement.dataset.windowId;
+        const state = configId ? windowStates.get(configId) : null;
+        if (state && hasMediaItems(state.config)) {
+            applyMediaSelectionPlacement(windowElement, state);
             return;
         }
 
@@ -2290,7 +2515,8 @@ function enableResizing(windowElement, handle) {
         const deltaX = event.clientX - startX;
         const deltaY = event.clientY - startY;
         const isActive = windowElement.classList.contains("is-active");
-        const minWidth = isActive ? ACTIVE_MIN_WIDTH : WINDOW_MIN_WIDTH;
+        const state = windowStates.get(windowElement.dataset.windowId);
+        const minWidth = isActive ? ACTIVE_MIN_WIDTH : getWindowMinimumWidth(windowElement);
         const minHeight = isActive ? ACTIVE_MIN_HEIGHT : WINDOW_MIN_HEIGHT;
         const clearance = isActive ? getAudioPlayerClearance(false) : WINDOW_EDGE_GUTTER * 2;
         const availableWidth = Math.max(window.innerWidth - WINDOW_EDGE_GUTTER * 2, WINDOW_MIN_WIDTH);
@@ -2334,6 +2560,12 @@ function enableResizing(windowElement, handle) {
         if (windowElement.classList.contains("is-active")) {
             windowElement.dataset.expandedWidth = Math.round(rect.width).toString();
             windowElement.dataset.expandedHeight = Math.round(rect.height).toString();
+        } else {
+            const state = windowStates.get(windowElement.dataset.windowId);
+            if (state && hasMediaItems(state.config)) {
+                state.previewReferenceWidth = rect.width;
+                state.previewReferenceViewportHeight = Math.max(rect.height - getWindowChromeHeight(windowElement), 1);
+            }
         }
 
         notifySceneResize(windowElement);
@@ -2351,6 +2583,8 @@ function showError(viewport, state, message) {
     if (!state.errorElement) {
         const error = document.createElement("div");
         error.className = "art-window__error";
+        error.setAttribute("role", "status");
+        error.setAttribute("aria-live", "polite");
         error.textContent = message;
         viewport.appendChild(error);
         state.errorElement = error;
