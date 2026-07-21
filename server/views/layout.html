@@ -22,11 +22,44 @@
     </div>
 
     <header class="site-header">
-        <a class="site-brand" href="/" data-nav-link="home">saintjustus.xyz</a>
-        <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" aria-label="switch to light mode">
-            <span aria-hidden="true">☀</span>
-        </button>
+        <div class="site-header__group site-header__group--left">
+            <a
+                class="site-header__control site-header__control--github"
+                href="https://github.com/saintjustus"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="github profile for saintjustus"
+                data-home-header-control
+            >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path fill="currentColor" d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.71.5.1.68-.22.68-.49 0-.24-.01-1.05-.02-1.91-2.78.62-3.37-1.21-3.37-1.21-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.89 1.57 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.35 9.35 0 0 1 12 6.94a9.3 9.3 0 0 1 2.5.35c1.91-1.33 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.93-2.34 4.8-4.57 5.05.36.32.68.95.68 1.92 0 1.38-.01 2.49-.01 2.83 0 .27.18.6.69.49A10.24 10.24 0 0 0 22 12.23C22 6.58 17.52 2 12 2Z"/>
+                </svg>
+            </a>
+            <button class="site-header__control site-header__control--about" type="button" data-about-open data-home-header-control>
+                about
+            </button>
+        </div>
+        <div class="site-header__group site-header__group--right">
+            <a class="site-brand" href="/" data-nav-link="home">saintjustus.xyz</a>
+            <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" aria-label="switch to light mode">
+                <span aria-hidden="true">☀</span>
+            </button>
+        </div>
     </header>
+
+    <dialog class="about-dialog" data-about-dialog aria-labelledby="about-dialog-title">
+        <section class="about-dialog__surface">
+            <header class="about-dialog__header">
+                <h2 id="about-dialog-title">about</h2>
+                <button class="about-dialog__close" type="button" data-about-close aria-label="close about dialog">×</button>
+            </header>
+            <div class="about-dialog__body">
+                <p>i am a multidisciplinary creative technologist whose practice spans programming, creative coding, immersive media, audiovisual production, stage and lighting design, virtual production, music, DJing, graphic design, marketing, and IT infrastructure. i approach these disciplines as interconnected parts of a larger creative system, using software, sound, light, imagery, physical space, and human interaction to construct cohesive experiences. driven by a constant thirst for knowledge, i move between conceptual design, technical development, systems integration, and live operation, allowing me to create work that is visually compelling, emotionally resonant, and technically resilient. this holistic approach is central to my design ethos: understanding each layer of an experience well enough to bring creative ideas into reality without losing their intention, atmosphere, or cultural meaning.</p>
+                <p>my institutional work has allowed me to apply this approach across immersive entertainment, large-scale installation, and some of the world’s most technically ambitious performance environments. with Particle Ink, i contributed to a theatrical world that blended live performance, animation, projection, augmented reality, interactive media, lighting, sound, and physical scenery, creating environments where digital characters and imagery appeared to inhabit the architecture alongside performers and audiences. at Lumen &amp; Forge, i worked on large-format projection and destination-based experiences, including projection domes, architectural projection onto the Las Vegas Stratosphere, and the development of Parque de las Ciencias by Toroverde in Puerto Rico, where museum exhibitions, immersive environments, virtual reality, projection, sound, lighting, and physical effects were combined into educational and experiential attractions. i currently work at Sphere, focusing on show-control programming, on-premises system maintenance and design, and show-critical automation within an environment where massive-scale media, spatial audio, lighting, effects, networking, and real-time control systems must operate as a single reliable production ecosystem. across each of these spaces, my role exists at the intersection of creative intention and technical execution—building, programming, maintaining, and orchestrating the systems that allow technology to recede into the background while the experience itself takes focus.</p>
+                <p>outside of institutional production, i contribute to underground art and music culture through DJing, event curation, rave facilitation, street art, and disruptive design. my work explores the space between the familiar and the uncanny, drawing from mysticism, Afrofuturism, religious symbolism, and the ways technology, belief, and culture interact with the contemporary zeitgeist. across every medium, i aim to create work that feels technically rigorous, culturally aware, emotionally resonant, and difficult to categorize.</p>
+            </div>
+        </section>
+    </dialog>
 
     <div data-page-root>
         {{{content}}}
@@ -40,6 +73,7 @@
     <script type="module" src="{{jsAppShell}}"></script>
     <script type="module" src="{{jsThemeToggle}}"></script>
     <script type="module" src="{{jsBackgroundScenes}}"></script>
+    <script type="module" src="{{jsAboutDialog}}"></script>
     {{{pageScripts}}}
 </body>
 </html>
