@@ -31,8 +31,14 @@ test('home renders about dialog and external github control', async () => {
     assert.match(response.text, /target="_blank"/);
     assert.match(response.text, /rel="noopener noreferrer"/);
     assert.match(response.text, /aria-label="github profile for saintjustus"/);
-    assert.match(response.text, /with Particle Ink/);
-    assert.match(response.text, /at Lumen &amp; Forge/);
+    assert.match(response.text, /multidisciplinary artist and creative technologist/);
+    assert.match(response.text, /Manager of Production Systems/);
+    assert.match(response.text, /about-dialog__accent--red">technology<\/span>/);
+    assert.match(response.text, /about-dialog__accent--green">design<\/span>/);
+    assert.match(response.text, /about-dialog__accent--blue">media\.<\/span>/);
+    assert.equal((response.text.match(/about-dialog__accent--gradient/g) || []).length, 2);
+    assert.doesNotMatch(response.text, /multidisciplinary creative technologist whose practice spans/);
+    assert.doesNotMatch(response.text, /\(\(|\)\)|\[technology\]|\{design\}|\(media\.\)/);
     assert.ok(response.text.includes(versionedAsset('/js/about-dialog.js')));
 
     const githubPosition = response.text.indexOf('aria-label="github profile for saintjustus"');
