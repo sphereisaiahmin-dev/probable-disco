@@ -630,6 +630,45 @@ html[data-page="home"] .site-header__control[data-home-header-control] {
     font-size: clamp(0.9rem, 1.8vw, 1.05rem);
 }
 
+.about-dialog__accent--red {
+    color: var(--tag-red);
+}
+
+.about-dialog__accent--green {
+    color: var(--tag-green);
+}
+
+.about-dialog__accent--blue {
+    color: var(--tag-blue);
+}
+
+.about-dialog__accent--gradient {
+    color: var(--tag-blue);
+}
+
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+    .about-dialog__accent--gradient {
+        background: linear-gradient(
+            90deg,
+            var(--tag-red) 0%,
+            var(--tag-blue) 50%,
+            var(--tag-green) 100%
+        );
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+        -webkit-text-fill-color: transparent;
+    }
+}
+
+@media (forced-colors: active) {
+    .about-dialog__accent {
+        background: none;
+        color: CanvasText;
+        -webkit-text-fill-color: CanvasText;
+    }
+}
+
 @media (max-width: 480px) {
     .site-header__control {
         min-height: 2.5rem;
