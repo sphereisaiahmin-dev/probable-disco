@@ -21,6 +21,7 @@
     --tag-green-surface: rgba(124, 242, 156, 0.14);
     --tag-blue: #6ea8ff;
     --tag-blue-surface: rgba(110, 168, 255, 0.14);
+    --scene-playback-overlay: rgba(5, 5, 5, 0.24);
 }
 
 body.theme-light {
@@ -29,6 +30,7 @@ body.theme-light {
     --canvas-background-color: #f1efe8;
     --dialog-backdrop: rgba(242, 241, 236, 0.34);
     --dialog-shadow: rgba(17, 17, 17, 0.18);
+    --scene-playback-overlay: rgba(242, 241, 236, 0.24);
 }
 
 * {
@@ -888,7 +890,7 @@ html[data-page="music"] [data-background-canvas] {
     min-width: 180px;
     min-height: 120px;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     border: 1px solid var(--accent-color);
     border-radius: 0;
     background: var(--window-background);
@@ -919,7 +921,7 @@ html[data-page="music"] [data-background-canvas] {
 .art-window.is-active {
     position: fixed;
     border-radius: 0;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     z-index: 9;
     cursor: default;
     left: 0;
@@ -969,7 +971,8 @@ html[data-page="music"] [data-background-canvas] {
     min-width: 0;
 }
 
-.art-window__header {
+.art-window__header,
+.art-window__footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -986,6 +989,14 @@ html[data-page="music"] [data-background-canvas] {
 .art-window.is-active .art-window__header {
     cursor: default;
     background: rgba(0, 0, 0, 0.18);
+}
+
+.art-window__footer {
+    justify-content: flex-end;
+    min-height: 3.25rem;
+    border-top: 1px solid var(--divider-color);
+    border-bottom: 0;
+    cursor: default;
 }
 
 .art-window__heading {
@@ -1116,7 +1127,7 @@ html[data-page="music"] [data-background-canvas] {
     background: var(--control-hover-background);
 }
 
-.art-window__control--description.is-active {
+.art-window__footer-button--description.is-active {
     background: var(--control-hover-background);
     border: 1px solid var(--divider-color);
 }
@@ -1126,6 +1137,10 @@ html[data-page="music"] [data-background-canvas] {
     display: block;
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
     overflow: hidden;
+}
+
+.art-window.has-media-carousel .art-window__viewport {
+    touch-action: pan-y;
 }
 
 .art-window__resize-handle {
@@ -1200,8 +1215,47 @@ html[data-page="music"] [data-background-canvas] {
     overflow: hidden;
 }
 
+.art-window__scene-playback {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: var(--scene-playback-overlay);
+    backdrop-filter: blur(2px);
+    transition: background-color 0.6s ease;
+}
+
+.art-window__scene-playback[hidden] {
+    display: none;
+}
+
+.art-window__scene-play-button {
+    appearance: none;
+    padding: 0.75rem;
+    border: 0;
+    background: transparent;
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: lowercase;
+    cursor: pointer;
+    transition: color 0.6s ease, opacity 0.25s ease, transform 0.25s ease;
+}
+
+.art-window__scene-play-button:hover,
+.art-window__scene-play-button:focus-visible {
+    outline: none;
+    opacity: 0.72;
+    transform: scale(1.04);
+}
+
+.art-window.is-scene-playing .art-window__preview,
 .art-window.is-active .art-window__preview {
     opacity: 0;
+    filter: blur(0) saturate(1);
 }
 
 .art-window__content iframe,
@@ -1263,59 +1317,58 @@ html[data-page="music"] [data-background-canvas] {
     }
 }
 
-.art-window__carousel {
-    position: absolute;
-    inset: 0;
-    z-index: 3;
-    pointer-events: none;
-}
-
-.art-window__carousel-button {
+.art-window__footer-button {
     appearance: none;
-    position: absolute;
-    top: 0;
-    bottom: 0;
     display: grid;
     place-items: center;
-    width: min(34%, 9rem);
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.55rem;
     border: 0;
-    color: rgba(255, 255, 255, 0.78);
+    border-radius: 999px;
+    background: var(--control-background);
+    color: inherit;
     font: inherit;
-    font-size: 2rem;
+    font-size: 0.9rem;
     cursor: pointer;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.25s ease, color 0.25s ease;
+    transition: background 0.3s ease, border-color 0.3s ease;
 }
 
-.art-window.has-media-carousel .art-window__carousel-button {
-    opacity: 0.34;
-    visibility: visible;
-    pointer-events: auto;
+.art-window__footer-button:hover,
+.art-window__footer-button:focus-visible {
+    background: var(--control-hover-background);
 }
 
-.art-window__carousel-button--previous {
-    left: 0;
-    background: linear-gradient(90deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0));
+.art-window__footer-button[hidden] {
+    display: none;
 }
 
-.art-window__carousel-button--next {
-    right: 0;
-    background: linear-gradient(270deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0));
+.art-window__footer-button--description {
+    margin-right: auto;
 }
 
-.art-window.has-media-carousel:hover .art-window__carousel-button,
-.art-window.has-media-carousel:focus-within .art-window__carousel-button,
-.art-window.is-active .art-window__carousel-button {
-    opacity: 0.52;
+.art-window__footer-button--media-previous {
+    color: var(--tag-blue);
+    background: var(--tag-blue-surface);
 }
 
-.art-window__carousel-button:hover,
-.art-window__carousel-button:focus-visible {
-    color: var(--text-color);
-    opacity: 0.92;
-    outline: none;
+.art-window__footer-button--media-next {
+    color: var(--tag-red);
+    background: var(--tag-red-surface);
+}
+
+.art-window__footer-button--media-previous:hover,
+.art-window__footer-button--media-previous:focus-visible {
+    background: rgba(110, 168, 255, 0.22);
+}
+
+.art-window__footer-button--media-next:hover,
+.art-window__footer-button--media-next:focus-visible {
+    background: rgba(255, 107, 107, 0.22);
+}
+
+.art-window__footer-button--pause {
+    margin-left: auto;
 }
 
 .art-window__media-warning {
@@ -1539,7 +1592,7 @@ html[data-page="music"] [data-background-canvas] {
     position: absolute;
     left: 1rem;
     right: 1rem;
-    bottom: 1rem;
+    bottom: calc(3.25rem + 1rem);
     padding: 0.75rem 0.9rem;
     border: 1px solid var(--divider-color);
     border-radius: 0.75rem;

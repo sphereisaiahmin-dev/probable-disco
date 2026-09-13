@@ -15,7 +15,8 @@ export const artWindowConfig = [
         initialSize: { width: 480, height: 320 },
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.15), rgba(80,80,80,0.35))",
         hint: "launch stream",
-        useCanvas: false
+        useCanvas: false,
+        requiresExplicitPlayback: true
     },
     {
         id: "webcam-impressions",
@@ -27,7 +28,8 @@ export const artWindowConfig = [
         initialSize: { width: 520, height: 360 },
         previewGradient: "linear-gradient(135deg, rgba(255,255,255,0.2), rgba(80,120,255,0.25))",
         hint: "allow camera",
-        useCanvas: false
+        useCanvas: false,
+        requiresExplicitPlayback: true
     },
     {
         id: "test-art",
