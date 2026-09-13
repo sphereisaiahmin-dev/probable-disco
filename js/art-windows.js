@@ -37,6 +37,7 @@ const DEFAULT_MEDIA_ASPECT_RATIO = 16 / 9;
 const CAROUSEL_MIN_WIDTH = 340;
 const MEDIA_GEOMETRY_DURATION = 420;
 const MEDIA_FADE_DURATION = 220;
+const SCENE_IDLE_TIMEOUT = 30000;
 
 const placementCache = new Map();
 const floatingWindows = new Set();
@@ -492,6 +493,7 @@ function createWindowElement(config) {
     state.mediaTitleElement = mediaTitle;
     state.mediaTagsElement = mediaTags;
     initialiseLivePreview(windowElement, state);
+    createScenePlaybackControl(windowElement, state);
 
     if (config.hint) {
         const hint = document.createElement("span");
@@ -816,6 +818,101 @@ function initialiseLivePreview(windowElement, state) {
     }
 
     state.previewInitialised = true;
+}
+
+function createScenePlaybackControl(windowElement, state) {
+    if (!state?.config.requiresExplicitPlayback || state.scenePlaybackControl) {
+        return;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "art-window__scene-playback";
+    overlay.setAttribute("role", "group");
+    overlay.setAttribute("aria-label", `play ${state.config.title} scene`);
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "art-window__scene-play-button";
+    button.textContent = "play";
+    button.setAttribute("aria-label", `play ${state.config.title} scene`);
+    button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openWindow(windowElement, state.config.uid);
+        startScenePlayback(windowElement, state);
+    });
+
+    overlay.appendChild(button);
+    state.viewportHost?.appendChild(overlay);
+    state.scenePlaybackControl = overlay;
+    state.scenePlaybackButton = button;
+}
+
+function startScenePlayback(windowElement, state) {
+    if (!state?.config.requiresExplicitPlayback) {
+        return;
+    }
+
+    state.scenePlaybackRequested = true;
+    state.scenePlaybackControl?.setAttribute("hidden", "");
+    if (state.errorElement) {
+        state.errorElement.hidden = true;
+    }
+    attachSceneActivityListeners(state);
+    resetSceneIdleTimer(state);
+    mountScene(state, windowElement, state.config.uid);
+}
+
+function stopScenePlayback(state) {
+    if (!state?.config.requiresExplicitPlayback) {
+        return;
+    }
+
+    clearScenePlaybackActivity(state);
+    state.scenePlaybackRequested = false;
+    unmountScene(state, state.config.uid);
+    state.previewElement?.classList.remove("is-live");
+    state.scenePlaybackControl?.removeAttribute("hidden");
+}
+
+function resetSceneIdleTimer(state) {
+    if (!state?.scenePlaybackRequested) {
+        return;
+    }
+
+    if (state.sceneIdleTimeoutId !== null) {
+        clearTimeout(state.sceneIdleTimeoutId);
+    }
+    state.sceneIdleTimeoutId = window.setTimeout(() => {
+        state.sceneIdleTimeoutId = null;
+        stopScenePlayback(state);
+    }, SCENE_IDLE_TIMEOUT);
+}
+
+function attachSceneActivityListeners(state) {
+    if (state.sceneActivityCleanup) {
+        return;
+    }
+
+    const recordActivity = () => resetSceneIdleTimer(state);
+    const activityEvents = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"];
+    activityEvents.forEach((eventName) => {
+        document.addEventListener(eventName, recordActivity, { passive: true });
+    });
+    state.sceneActivityCleanup = () => {
+        activityEvents.forEach((eventName) => {
+            document.removeEventListener(eventName, recordActivity);
+        });
+        state.sceneActivityCleanup = null;
+    };
+}
+
+function clearScenePlaybackActivity(state) {
+    if (state?.sceneIdleTimeoutId !== null) {
+        clearTimeout(state.sceneIdleTimeoutId);
+        state.sceneIdleTimeoutId = null;
+    }
+    state?.sceneActivityCleanup?.();
 }
 
 function attachVideoPreview(windowElement, state) {
@@ -1704,7 +1801,12 @@ function ensureWindowState(configId) {
             videoHoverCleanup: null,
             videoHoverAttached: false,
             reopenTimeoutId: null,
-            shouldRestoreContent: false
+            shouldRestoreContent: false,
+            scenePlaybackControl: null,
+            scenePlaybackButton: null,
+            scenePlaybackRequested: false,
+            sceneIdleTimeoutId: null,
+            sceneActivityCleanup: null
         };
 
         windowStates.set(configId, state);
@@ -1841,14 +1943,13 @@ function teardownWindowContent(windowElement, state) {
         state.embedTimeoutId = null;
     }
 
-    if (state.config.type === "scene" && state.mounted) {
-        try {
-            state.instance?.unmount?.();
-        } catch (error) {
-            console.error(`failed to unmount scene ${state.config.sceneId}`, error);
+    if (state.config.type === "scene") {
+        if (state.config.requiresExplicitPlayback) {
+            clearScenePlaybackActivity(state);
+            state.scenePlaybackRequested = false;
+            state.scenePlaybackControl?.removeAttribute("hidden");
         }
-        state.mounted = false;
-        mountedSceneStates.delete(state.config.uid);
+        unmountScene(state, state.config.uid, { force: true });
     }
 
     if (state.mountPromise) {
@@ -1928,6 +2029,10 @@ function mountScene(state, windowElement, configId, { allowInactive = false } = 
         return;
     }
 
+    if (state.config.requiresExplicitPlayback && !state.scenePlaybackRequested) {
+        return;
+    }
+
     if (state.mounted) {
         mountedSceneStates.set(configId, state);
         markPreviewLive(state.previewElement);
@@ -1944,14 +2049,9 @@ function mountScene(state, windowElement, configId, { allowInactive = false } = 
 
     mountPromise
         .then(() => {
-            if (!allowInactive && !windowElement.classList.contains("is-active")) {
-                try {
-                    state.instance.unmount?.();
-                } catch (error) {
-                    console.error(`failed to unmount inactive scene ${state.config.sceneId}`, error);
-                }
-                state.mounted = false;
-                mountedSceneStates.delete(configId);
+            const playbackCancelled = state.config.requiresExplicitPlayback && !state.scenePlaybackRequested;
+            if (playbackCancelled || (!allowInactive && !windowElement.classList.contains("is-active"))) {
+                unmountScene(state, configId, { force: true });
                 state.mountPromise = null;
                 return;
             }
@@ -1962,12 +2062,30 @@ function mountScene(state, windowElement, configId, { allowInactive = false } = 
             state.mountPromise = null;
         })
         .catch((error) => {
+            if (state.config.requiresExplicitPlayback && !state.scenePlaybackRequested) {
+                state.mountPromise = null;
+                return;
+            }
             console.error(`failed to mount scene ${state.config.sceneId}`, error);
             showError(state.viewportHost, state, "failed to start scene");
             state.mounted = false;
             mountedSceneStates.delete(configId);
             state.mountPromise = null;
         });
+}
+
+function unmountScene(state, configId, { force = false } = {}) {
+    if (!state?.instance || (!force && !state.mounted && !state.mountPromise)) {
+        return;
+    }
+
+    try {
+        state.instance.unmount?.();
+    } catch (error) {
+        console.error(`failed to unmount scene ${state.config.sceneId}`, error);
+    }
+    state.mounted = false;
+    mountedSceneStates.delete(configId);
 }
 
 function mountEmbed(state) {

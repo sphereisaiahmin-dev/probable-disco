@@ -1200,6 +1200,42 @@ html[data-page="music"] [data-background-canvas] {
     overflow: hidden;
 }
 
+.art-window__scene-playback {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(5, 5, 5, 0.24);
+    backdrop-filter: blur(2px);
+}
+
+.art-window__scene-play-button {
+    appearance: none;
+    min-width: 6.5rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--accent-color);
+    border-radius: 999px;
+    background: rgba(5, 5, 5, 0.72);
+    color: var(--text-color);
+    font: inherit;
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: lowercase;
+    cursor: pointer;
+    transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+
+.art-window__scene-play-button:hover,
+.art-window__scene-play-button:focus-visible {
+    border-color: var(--text-color);
+    background: rgba(255, 255, 255, 0.14);
+    outline: none;
+    transform: scale(1.04);
+}
+
 .art-window.is-active .art-window__preview {
     opacity: 0;
 }
