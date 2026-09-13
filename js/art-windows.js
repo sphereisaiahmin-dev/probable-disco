@@ -826,6 +826,8 @@ function createScenePlaybackControl(windowElement, state) {
     pauseButton.className = "art-window__footer-button art-window__footer-button--pause";
     pauseButton.textContent = "pause";
     pauseButton.hidden = true;
+    pauseButton.setAttribute("hidden", "");
+    pauseButton.setAttribute("aria-hidden", "true");
     pauseButton.setAttribute("aria-label", `pause ${state.config.title} scene`);
     pauseButton.addEventListener("click", (event) => {
         event.preventDefault();
@@ -844,7 +846,11 @@ function startScenePlayback(windowElement, state) {
     state.scenePlaybackRequested = true;
     windowElement.classList.add("is-scene-playing");
     state.scenePlaybackControl?.setAttribute("hidden", "");
-    state.scenePauseButton?.removeAttribute("hidden");
+    if (state.scenePauseButton) {
+        state.scenePauseButton.hidden = false;
+        state.scenePauseButton.removeAttribute("hidden");
+        state.scenePauseButton.setAttribute("aria-hidden", "false");
+    }
     if (state.errorElement) {
         state.errorElement.hidden = true;
     }
@@ -864,7 +870,11 @@ function stopScenePlayback(state) {
     unmountScene(state, state.config.uid, { force: true });
     state.previewElement?.classList.remove("is-live");
     state.scenePlaybackControl?.removeAttribute("hidden");
-    state.scenePauseButton?.setAttribute("hidden", "");
+    if (state.scenePauseButton) {
+        state.scenePauseButton.hidden = true;
+        state.scenePauseButton.setAttribute("hidden", "");
+        state.scenePauseButton.setAttribute("aria-hidden", "true");
+    }
 }
 
 function resetSceneIdleTimer(state) {

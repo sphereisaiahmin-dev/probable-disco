@@ -1339,8 +1339,32 @@ html[data-page="music"] [data-background-canvas] {
     background: var(--control-hover-background);
 }
 
+.art-window__footer-button[hidden] {
+    display: none;
+}
+
 .art-window__footer-button--description {
     margin-right: auto;
+}
+
+.art-window__footer-button--media-previous {
+    color: var(--tag-blue);
+    background: var(--tag-blue-surface);
+}
+
+.art-window__footer-button--media-next {
+    color: var(--tag-red);
+    background: var(--tag-red-surface);
+}
+
+.art-window__footer-button--media-previous:hover,
+.art-window__footer-button--media-previous:focus-visible {
+    background: rgba(110, 168, 255, 0.22);
+}
+
+.art-window__footer-button--media-next:hover,
+.art-window__footer-button--media-next:focus-visible {
+    background: rgba(255, 107, 107, 0.22);
 }
 
 .art-window__footer-button--pause {
