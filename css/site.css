@@ -21,6 +21,7 @@
     --tag-green-surface: rgba(124, 242, 156, 0.14);
     --tag-blue: #6ea8ff;
     --tag-blue-surface: rgba(110, 168, 255, 0.14);
+    --scene-playback-overlay: rgba(5, 5, 5, 0.24);
 }
 
 body.theme-light {
@@ -29,6 +30,7 @@ body.theme-light {
     --canvas-background-color: #f1efe8;
     --dialog-backdrop: rgba(242, 241, 236, 0.34);
     --dialog-shadow: rgba(17, 17, 17, 0.18);
+    --scene-playback-overlay: rgba(242, 241, 236, 0.24);
 }
 
 * {
@@ -1207,37 +1209,40 @@ html[data-page="music"] [data-background-canvas] {
     display: grid;
     place-items: center;
     padding: 1rem;
-    background: rgba(5, 5, 5, 0.24);
+    background: var(--scene-playback-overlay);
     backdrop-filter: blur(2px);
+    transition: background-color 0.6s ease;
+}
+
+.art-window__scene-playback[hidden] {
+    display: none;
 }
 
 .art-window__scene-play-button {
     appearance: none;
-    min-width: 6.5rem;
-    min-height: 2.5rem;
-    padding: 0.5rem 1rem;
-    border: 1px solid var(--accent-color);
-    border-radius: 999px;
-    background: rgba(5, 5, 5, 0.72);
+    padding: 0.75rem;
+    border: 0;
+    background: transparent;
     color: var(--text-color);
     font: inherit;
     font-size: 0.75rem;
     letter-spacing: 0.14em;
     text-transform: lowercase;
     cursor: pointer;
-    transition: background 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+    transition: color 0.6s ease, opacity 0.25s ease, transform 0.25s ease;
 }
 
 .art-window__scene-play-button:hover,
 .art-window__scene-play-button:focus-visible {
-    border-color: var(--text-color);
-    background: rgba(255, 255, 255, 0.14);
     outline: none;
+    opacity: 0.72;
     transform: scale(1.04);
 }
 
+.art-window.is-scene-playing .art-window__preview,
 .art-window.is-active .art-window__preview {
     opacity: 0;
+    filter: blur(0) saturate(1);
 }
 
 .art-window__content iframe,

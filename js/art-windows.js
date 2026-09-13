@@ -487,6 +487,7 @@ function createWindowElement(config) {
     const runtimePreviewApplied = applyRuntimePreview(config, preview);
 
     const state = ensureWindowState(config.uid);
+    state.windowElement = windowElement;
     state.viewportHost = viewport;
     state.viewport = contentHost;
     state.previewElement = preview;
@@ -838,7 +839,6 @@ function createScenePlaybackControl(windowElement, state) {
     button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        openWindow(windowElement, state.config.uid);
         startScenePlayback(windowElement, state);
     });
 
@@ -854,13 +854,14 @@ function startScenePlayback(windowElement, state) {
     }
 
     state.scenePlaybackRequested = true;
+    windowElement.classList.add("is-scene-playing");
     state.scenePlaybackControl?.setAttribute("hidden", "");
     if (state.errorElement) {
         state.errorElement.hidden = true;
     }
     attachSceneActivityListeners(state);
     resetSceneIdleTimer(state);
-    mountScene(state, windowElement, state.config.uid);
+    mountScene(state, windowElement, state.config.uid, { allowInactive: true });
 }
 
 function stopScenePlayback(state) {
@@ -870,7 +871,8 @@ function stopScenePlayback(state) {
 
     clearScenePlaybackActivity(state);
     state.scenePlaybackRequested = false;
-    unmountScene(state, state.config.uid);
+    state.windowElement?.classList.remove("is-scene-playing");
+    unmountScene(state, state.config.uid, { force: true });
     state.previewElement?.classList.remove("is-live");
     state.scenePlaybackControl?.removeAttribute("hidden");
 }
@@ -1806,7 +1808,8 @@ function ensureWindowState(configId) {
             scenePlaybackButton: null,
             scenePlaybackRequested: false,
             sceneIdleTimeoutId: null,
-            sceneActivityCleanup: null
+            sceneActivityCleanup: null,
+            windowElement: null
         };
 
         windowStates.set(configId, state);
@@ -1945,11 +1948,10 @@ function teardownWindowContent(windowElement, state) {
 
     if (state.config.type === "scene") {
         if (state.config.requiresExplicitPlayback) {
-            clearScenePlaybackActivity(state);
-            state.scenePlaybackRequested = false;
-            state.scenePlaybackControl?.removeAttribute("hidden");
+            stopScenePlayback(state);
+        } else {
+            unmountScene(state, state.config.uid, { force: true });
         }
-        unmountScene(state, state.config.uid, { force: true });
     }
 
     if (state.mountPromise) {
