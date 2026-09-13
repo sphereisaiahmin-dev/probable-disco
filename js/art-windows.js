@@ -413,15 +413,9 @@ function createWindowElement(config) {
     if (hasDescription(config)) {
         descriptionToggle = document.createElement("button");
         descriptionToggle.type = "button";
-        descriptionToggle.className = "art-window__control art-window__control--description";
+        descriptionToggle.className = "art-window__footer-button art-window__footer-button--description";
         descriptionToggle.textContent = "…";
         descriptionToggle.setAttribute("aria-label", `toggle description for ${config.title}`);
-        controls.appendChild(descriptionToggle);
-    }
-
-    if (hasMediaItems(config) && config.mediaItems.length > 1) {
-        controls.appendChild(createHeaderMediaControl(config, windowElement, -1));
-        controls.appendChild(createHeaderMediaControl(config, windowElement, 1));
     }
 
     const fullscreenButton = document.createElement("button");
@@ -484,6 +478,23 @@ function createWindowElement(config) {
     contentHost.className = "art-window__content";
     viewport.appendChild(contentHost);
 
+    const footer = document.createElement("footer");
+    footer.className = "art-window__footer";
+    footer.addEventListener("pointerdown", (event) => {
+        event.stopPropagation();
+        bringToFront(windowElement);
+    });
+    if (descriptionToggle) {
+        footer.appendChild(descriptionToggle);
+    }
+    if (hasMediaItems(config) && config.mediaItems.length > 1) {
+        footer.append(
+            createFooterMediaControl(config, windowElement, -1),
+            createFooterMediaControl(config, windowElement, 1)
+        );
+        enableMediaSwipe(viewport, windowElement, config.uid);
+    }
+
     const runtimePreviewApplied = applyRuntimePreview(config, preview);
 
     const state = ensureWindowState(config.uid);
@@ -493,6 +504,7 @@ function createWindowElement(config) {
     state.previewElement = preview;
     state.mediaTitleElement = mediaTitle;
     state.mediaTagsElement = mediaTags;
+    state.footerElement = footer;
     initialiseLivePreview(windowElement, state);
     createScenePlaybackControl(windowElement, state);
 
@@ -501,11 +513,6 @@ function createWindowElement(config) {
         hint.className = "art-window__hint";
         hint.textContent = config.hint;
         viewport.appendChild(hint);
-    }
-
-    const mediaControls = createMediaControls(config, windowElement);
-    if (mediaControls) {
-        viewport.appendChild(mediaControls);
     }
 
     if (config.type === "embed" && !runtimePreviewApplied) {
@@ -520,6 +527,7 @@ function createWindowElement(config) {
 
     windowElement.appendChild(chrome);
     windowElement.appendChild(viewport);
+    windowElement.appendChild(footer);
 
     enableDragging(windowElement, header);
     enableResizing(windowElement, resizeHandle);
@@ -559,11 +567,11 @@ function createWindowElement(config) {
     return windowElement;
 }
 
-function createHeaderMediaControl(config, windowElement, direction) {
+function createFooterMediaControl(config, windowElement, direction) {
     const isPrevious = direction < 0;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `art-window__control art-window__control--media-${isPrevious ? "previous" : "next"}`;
+    button.className = `art-window__footer-button art-window__footer-button--media-${isPrevious ? "previous" : "next"}`;
     button.textContent = isPrevious ? "<" : ">";
     button.setAttribute("aria-label", `${isPrevious ? "previous" : "next"} media in ${config.title}`);
     button.addEventListener("click", (event) => {
@@ -572,40 +580,6 @@ function createHeaderMediaControl(config, windowElement, direction) {
         cycleWindowMedia(windowElement, config.uid, direction);
     });
     return button;
-}
-
-function createMediaControls(config, windowElement) {
-    if (!hasMediaItems(config) || config.mediaItems.length < 2) {
-        return null;
-    }
-
-    const controls = document.createElement("div");
-    controls.className = "art-window__carousel";
-    controls.addEventListener("pointerdown", (event) => {
-        event.stopPropagation();
-        bringToFront(windowElement);
-    });
-
-    const actions = [
-        { direction: -1, label: "previous", text: "<", className: "art-window__carousel-button--previous" },
-        { direction: 1, label: "next", text: ">", className: "art-window__carousel-button--next" }
-    ];
-
-    actions.forEach((action) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `art-window__carousel-button ${action.className}`;
-        button.textContent = action.text;
-        button.setAttribute("aria-label", `${action.label} media in ${config.title}`);
-        button.addEventListener("click", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            cycleWindowMedia(windowElement, config.uid, action.direction);
-        });
-        controls.appendChild(button);
-    });
-
-    return controls;
 }
 
 function createTagList(rawTags, { preserveEmpty = false } = {}) {
@@ -846,6 +820,20 @@ function createScenePlaybackControl(windowElement, state) {
     state.viewportHost?.appendChild(overlay);
     state.scenePlaybackControl = overlay;
     state.scenePlaybackButton = button;
+
+    const pauseButton = document.createElement("button");
+    pauseButton.type = "button";
+    pauseButton.className = "art-window__footer-button art-window__footer-button--pause";
+    pauseButton.textContent = "pause";
+    pauseButton.hidden = true;
+    pauseButton.setAttribute("aria-label", `pause ${state.config.title} scene`);
+    pauseButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        stopScenePlayback(state);
+    });
+    state.footerElement?.appendChild(pauseButton);
+    state.scenePauseButton = pauseButton;
 }
 
 function startScenePlayback(windowElement, state) {
@@ -856,6 +844,7 @@ function startScenePlayback(windowElement, state) {
     state.scenePlaybackRequested = true;
     windowElement.classList.add("is-scene-playing");
     state.scenePlaybackControl?.setAttribute("hidden", "");
+    state.scenePauseButton?.removeAttribute("hidden");
     if (state.errorElement) {
         state.errorElement.hidden = true;
     }
@@ -875,6 +864,7 @@ function stopScenePlayback(state) {
     unmountScene(state, state.config.uid, { force: true });
     state.previewElement?.classList.remove("is-live");
     state.scenePlaybackControl?.removeAttribute("hidden");
+    state.scenePauseButton?.setAttribute("hidden", "");
 }
 
 function resetSceneIdleTimer(state) {
@@ -1382,8 +1372,8 @@ function syncSelectedMediaMetadata(windowElement, state) {
     windowElement.setAttribute("aria-label", `${state.config.title}: ${metadata.title}`);
 
     const controlLabels = [
-        [".art-window__control--media-previous, .art-window__carousel-button--previous", "previous"],
-        [".art-window__control--media-next, .art-window__carousel-button--next", "next"]
+        [".art-window__footer-button--media-previous", "previous"],
+        [".art-window__footer-button--media-next", "next"]
     ];
 
     controlLabels.forEach(([selector, direction]) => {
@@ -1405,6 +1395,51 @@ function cycleWindowMedia(windowElement, configId, direction) {
     const total = state.config.mediaItems.length;
     const queuedIndex = Number.isInteger(state.desiredMediaIndex) ? state.desiredMediaIndex : state.mediaIndex;
     requestMediaSelection(windowElement, state, (queuedIndex + direction + total) % total);
+}
+
+function enableMediaSwipe(viewport, windowElement, configId) {
+    if (!viewport || !windowElement || !configId) {
+        return;
+    }
+
+    let pointerId = null;
+    let startX = 0;
+    let startY = 0;
+    const minimumSwipeDistance = 40;
+
+    viewport.addEventListener("pointerdown", (event) => {
+        if (event.pointerType !== "touch" || event.isPrimary === false) {
+            return;
+        }
+        pointerId = event.pointerId;
+        startX = event.clientX;
+        startY = event.clientY;
+    });
+
+    const completeSwipe = (event) => {
+        if (pointerId !== event.pointerId) {
+            return;
+        }
+
+        pointerId = null;
+        if (!window.matchMedia("(max-width: 640px)").matches) {
+            return;
+        }
+
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+        if (Math.abs(deltaX) < minimumSwipeDistance || Math.abs(deltaX) <= Math.abs(deltaY)) {
+            return;
+        }
+
+        event.preventDefault();
+        cycleWindowMedia(windowElement, configId, deltaX < 0 ? 1 : -1);
+    };
+
+    viewport.addEventListener("pointerup", completeSwipe);
+    viewport.addEventListener("pointercancel", () => {
+        pointerId = null;
+    });
 }
 
 function recordMediaDimensions(state, mediaItem, width, height) {
@@ -1806,10 +1841,12 @@ function ensureWindowState(configId) {
             shouldRestoreContent: false,
             scenePlaybackControl: null,
             scenePlaybackButton: null,
+            scenePauseButton: null,
             scenePlaybackRequested: false,
             sceneIdleTimeoutId: null,
             sceneActivityCleanup: null,
-            windowElement: null
+            windowElement: null,
+            footerElement: null
         };
 
         windowStates.set(configId, state);
@@ -2313,7 +2350,11 @@ function parseAspectRatio(value) {
 function getWindowChromeHeight(windowElement) {
     const chrome = windowElement.querySelector(".art-window__chrome") || windowElement.querySelector(".art-window__header");
     const chromeRect = chrome?.getBoundingClientRect();
-    return Math.max(chromeRect?.height || chrome?.offsetHeight || 0, 0);
+    const footer = windowElement.querySelector(".art-window__footer");
+    const footerRect = footer?.getBoundingClientRect();
+    const chromeHeight = Math.max(chromeRect?.height || chrome?.offsetHeight || 0, 0);
+    const footerHeight = Math.max(footerRect?.height || footer?.offsetHeight || 0, 0);
+    return chromeHeight + footerHeight;
 }
 
 function getWindowMinimumWidth(windowElement, availableWidth = Number.POSITIVE_INFINITY) {
