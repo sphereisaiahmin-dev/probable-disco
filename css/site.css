@@ -8,6 +8,7 @@
     --surface-color: rgba(10, 10, 10, 0.38);
     --window-background: rgba(8, 8, 8, 0.42);
     --window-active-viewport: rgba(8, 8, 8, 0.58);
+    --work-fullscreen-blur: 8px;
     --control-background: rgba(255, 255, 255, 0.1);
     --control-hover-background: rgba(255, 255, 255, 0.22);
     --canvas-background-color: #000;
@@ -912,6 +913,11 @@ html[data-page="music"] [data-background-canvas] {
     --window-reveal-offset: 0px;
 }
 
+html[data-page="work"] .work-window-active .canvas-stack,
+html[data-page="work"] .work-window-active .art-window[data-window-layer="work"]:not(.is-active) {
+    filter: blur(var(--work-fullscreen-blur));
+}
+
 .art-window:focus-within,
 .art-window:hover {
     border-color: var(--window-highlight-border);
@@ -1159,15 +1165,6 @@ html[data-page="music"] [data-background-canvas] {
     transition: opacity 0.3s ease, background 0.3s ease;
     touch-action: none;
     z-index: 4;
-}
-
-.art-window__resize-handle::after {
-    content: "";
-    position: absolute;
-    inset: 0.25rem;
-    border-bottom: 1px solid var(--accent-color);
-    border-right: 1px solid var(--accent-color);
-    opacity: 0.8;
 }
 
 .art-window__resize-handle:hover,
@@ -1571,21 +1568,6 @@ html[data-page="music"] [data-background-canvas] {
         right: 0.75rem;
         text-align: center;
     }
-}
-
-.art-window__hint {
-    position: absolute;
-    inset: auto 1rem 1rem auto;
-    font-size: 0.65rem;
-    letter-spacing: 0.2em;
-    text-transform: lowercase;
-    opacity: 0.6;
-    transition: opacity 0.3s ease;
-    z-index: 2;
-}
-
-.art-window.is-active .art-window__hint {
-    opacity: 0;
 }
 
 .art-window__tooltip {

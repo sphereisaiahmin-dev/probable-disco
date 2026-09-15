@@ -63,6 +63,7 @@ if (document.readyState === "loading") {
 
 document.addEventListener("shell:navigation", (event) => {
     const targetId = event?.detail?.pageId;
+    syncBodyActiveState();
     requestAnimationFrame(() => {
         bootstrapLayers();
         revealLayer(targetId);
@@ -75,8 +76,19 @@ document.addEventListener("shell:navigate-intent", (event) => {
     if (!currentPage || currentPage === targetId) {
         return;
     }
+    closeActiveWindow();
     dismissLayer(currentPage);
 });
+
+// Restore geometry before the shell detaches and caches the outgoing page.
+window.addEventListener("popstate", closeActiveWindow);
+
+function closeActiveWindow() {
+    const activeWindow = document.querySelector(".art-window.is-active");
+    if (activeWindow) {
+        closeWindow(activeWindow, activeWindow.dataset.windowId);
+    }
+}
 
 function prepareConfigs(layerKey, entries) {
     if (!Array.isArray(entries)) {
@@ -507,13 +519,6 @@ function createWindowElement(config) {
     state.footerElement = footer;
     initialiseLivePreview(windowElement, state);
     createScenePlaybackControl(windowElement, state);
-
-    if (config.hint) {
-        const hint = document.createElement("span");
-        hint.className = "art-window__hint";
-        hint.textContent = config.hint;
-        viewport.appendChild(hint);
-    }
 
     if (config.type === "embed" && !runtimePreviewApplied) {
         hydrateEmbedPreview(config, preview);
@@ -2067,7 +2072,7 @@ function openWindow(windowElement, configId) {
 
     storeWindowOrigin(windowElement);
     windowElement.classList.add("is-active");
-    document.body.classList.add("art-window-active");
+    syncBodyActiveState();
     applyExpandedPlacement(windowElement, config);
 
     mountWindowContent(windowElement, state);
@@ -2529,6 +2534,10 @@ function handleKeydown(event) {
 function syncBodyActiveState() {
     const hasActive = document.querySelector(".art-window.is-active");
     document.body.classList.toggle("art-window-active", Boolean(hasActive));
+    document.body.classList.toggle(
+        "work-window-active",
+        document.documentElement.dataset.page === "work" && hasActive?.dataset.windowLayer === "work"
+    );
 }
 
 function enableDragging(windowElement, handle) {
