@@ -44,6 +44,9 @@
 - Remember to restore the host/IP to the default loopback binding once you are done to avoid accidental exposure.
 
 ## Modular art window scenes
+
+- Work windows blur the background canvas and inactive work windows while expanded, using `--work-fullscreen-blur` in `css/site.css`. Keep navigation, audio controls, and the expanded window sharp; synchronize the state on restoration and page navigation.
+- Shared floating windows retain functional resize controls without decorative corner marks or text hint overlays.
 - All art scenes live in `js/art/scenes/` and must export a factory (e.g. `export function createMyScene()`) that returns an object with `mount({ canvas, container })`, `resize(width, height)`, and `unmount()` so `js/art/art-windows.js` can manage lifecycle events.
 - Register new scene factories in `js/art/scene-registry.js` and point any floating window entry at that `sceneId` via `js/art/windows-config.js`.
 - Whether you are building raw GLSL, Three.js, or another WebGL pipeline, keep rendering isolated to the provided canvas element, react to `resize` calls, and tear down event listeners/timers in `unmount()`.
