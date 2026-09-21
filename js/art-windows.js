@@ -2,6 +2,11 @@ import { artWindowConfig } from "./art/windows-config.js";
 import { workWindowConfig } from "./work/windows-config.js";
 import { musicWindowConfig } from "./music/windows-config.js";
 import { createSceneInstance } from "./art/scene-registry.js";
+import {
+    classifySwipeGesture,
+    isCompactWindowLayout,
+    shouldUseSidewaysWindow
+} from "./window-interactions.js";
 
 const configIndex = new Map();
 
@@ -37,12 +42,15 @@ const DEFAULT_MEDIA_ASPECT_RATIO = 16 / 9;
 const CAROUSEL_MIN_WIDTH = 340;
 const MEDIA_GEOMETRY_DURATION = 420;
 const MEDIA_FADE_DURATION = 220;
+const MEDIA_READY_TIMEOUT = 8000;
 const SCENE_IDLE_TIMEOUT = 30000;
 
 const placementCache = new Map();
 const floatingWindows = new Set();
 const floatingStates = new WeakMap();
 let floatingAnimationFrame = null;
+let compactLayoutActive = null;
+let lockedPageScrollY = null;
 
 bootstrapLayers();
 
@@ -376,6 +384,76 @@ function attachGlobalListeners() {
     window.addEventListener("resize", handleResize);
     document.addEventListener("keydown", handleKeydown);
     listenersAttached = true;
+    syncWindowLayoutMode({ force: true });
+}
+
+function syncWindowLayoutMode({ force = false } = {}) {
+    const nextCompact = isCompactWindowLayout();
+    const previousCompact = compactLayoutActive;
+    document.documentElement.classList.toggle("is-compact-window-layout", nextCompact);
+
+    if (previousCompact === null) {
+        compactLayoutActive = nextCompact;
+        return nextCompact;
+    }
+
+    if (!force && previousCompact === nextCompact) {
+        return nextCompact;
+    }
+
+    document.querySelectorAll(".art-window").forEach((windowElement) => {
+        const configId = windowElement.dataset.windowId;
+        const config = configId ? configIndex.get(configId) : null;
+        if (!config) {
+            return;
+        }
+
+        if (nextCompact) {
+            if (previousCompact === false && !windowElement.classList.contains("is-active")) {
+                captureFloatingPlacement(windowElement);
+            }
+            if (windowElement.classList.contains("is-active")) {
+                applyExpandedPlacement(windowElement, config);
+            }
+            return;
+        }
+
+        windowElement.classList.remove("is-sideways");
+        if (windowElement.classList.contains("is-active")) {
+            applyExpandedPlacement(windowElement, config);
+            return;
+        }
+
+        if (!restoreFloatingPlacement(windowElement)) {
+            applyInitialPlacement(windowElement, config);
+        }
+        const state = windowStates.get(configId);
+        if (state && hasMediaItems(state.config)) {
+            applyMediaSelectionPlacement(windowElement, state);
+        }
+    });
+
+    compactLayoutActive = nextCompact;
+    return nextCompact;
+}
+
+function captureFloatingPlacement(windowElement) {
+    ["left", "top", "width", "height"].forEach((property) => {
+        windowElement.dataset[`floating${property[0].toUpperCase()}${property.slice(1)}`] =
+            windowElement.style[property] || "";
+    });
+    windowElement.dataset.floatingPlacementCaptured = "1";
+}
+
+function restoreFloatingPlacement(windowElement) {
+    if (windowElement.dataset.floatingPlacementCaptured !== "1") {
+        return false;
+    }
+    ["left", "top", "width", "height"].forEach((property) => {
+        const key = `floating${property[0].toUpperCase()}${property.slice(1)}`;
+        windowElement.style[property] = windowElement.dataset[key] || "";
+    });
+    return true;
 }
 
 function createWindowElement(config) {
@@ -435,6 +513,7 @@ function createWindowElement(config) {
     fullscreenButton.className = "art-window__control art-window__control--fullscreen";
     fullscreenButton.textContent = "□";
     fullscreenButton.setAttribute("aria-label", `toggle fullscreen for ${config.title}`);
+    fullscreenButton.setAttribute("aria-pressed", "false");
     fullscreenButton.addEventListener("click", (event) => {
         event.stopPropagation();
         toggleWindowFullscreen(windowElement, config.uid);
@@ -458,6 +537,7 @@ function createWindowElement(config) {
 
     let mediaTitle = null;
     let mediaTags = null;
+    let mediaStatus = null;
     if (usesDynamicMediaMetadata) {
         const initialMetadata = getMediaMetadata(config, config.mediaItems[0]);
         const mediaHeading = document.createElement("div");
@@ -472,6 +552,13 @@ function createWindowElement(config) {
 
         mediaTags = createTagList(initialMetadata.tags, { preserveEmpty: true });
         mediaHeading.appendChild(mediaTags);
+
+        mediaStatus = document.createElement("span");
+        mediaStatus.className = "art-window__media-status visually-hidden";
+        mediaStatus.setAttribute("role", "status");
+        mediaStatus.setAttribute("aria-live", "polite");
+        mediaStatus.setAttribute("aria-atomic", "true");
+        mediaHeading.appendChild(mediaStatus);
 
         chrome.appendChild(mediaHeading);
     }
@@ -489,6 +576,21 @@ function createWindowElement(config) {
     const contentHost = document.createElement("div");
     contentHost.className = "art-window__content";
     viewport.appendChild(contentHost);
+
+    let embedActivator = null;
+    if (config.type === "embed" && !hasMediaItems(config)) {
+        embedActivator = document.createElement("button");
+        embedActivator.type = "button";
+        embedActivator.className = "art-window__embed-activator";
+        embedActivator.textContent = `open ${config.title}`;
+        embedActivator.setAttribute("aria-label", `open ${config.title}`);
+        embedActivator.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            openWindow(windowElement, config.uid);
+        });
+        viewport.appendChild(embedActivator);
+    }
 
     const footer = document.createElement("footer");
     footer.className = "art-window__footer";
@@ -516,9 +618,13 @@ function createWindowElement(config) {
     state.previewElement = preview;
     state.mediaTitleElement = mediaTitle;
     state.mediaTagsElement = mediaTags;
+    state.mediaStatusElement = mediaStatus;
     state.footerElement = footer;
+    state.fullscreenButton = fullscreenButton;
+    state.embedActivator = embedActivator;
     initialiseLivePreview(windowElement, state);
     createScenePlaybackControl(windowElement, state);
+    syncEmbedInteractivity(windowElement, state);
 
     if (config.type === "embed" && !runtimePreviewApplied) {
         hydrateEmbedPreview(config, preview);
@@ -559,6 +665,11 @@ function createWindowElement(config) {
 
         if (windowElement.dataset.resizeWasActive === "1") {
             delete windowElement.dataset.resizeWasActive;
+            return;
+        }
+
+        if (windowElement.dataset.gestureWasActive === "1") {
+            delete windowElement.dataset.gestureWasActive;
             return;
         }
 
@@ -972,19 +1083,21 @@ function requestMediaSelection(windowElement, state, targetIndex, { initial = fa
     }
 
     const total = state.config.mediaItems.length;
-    state.desiredMediaIndex = ((Math.round(targetIndex) % total) + total) % total;
+    const normalisedIndex = ((Math.round(targetIndex) % total) + total) % total;
+    state.desiredMediaIndex = normalisedIndex;
     if (!windowElement.isConnected) {
         requestAnimationFrame(() => {
-            requestMediaSelection(windowElement, state, state.desiredMediaIndex, { initial });
+            requestMediaSelection(windowElement, state, normalisedIndex, { initial });
         });
         return;
     }
+    state.mediaSelectionQueue.push({ index: normalisedIndex, initial });
     if (!state.mediaTransitionInProgress) {
-        processMediaSelectionQueue(windowElement, state, { initial });
+        processMediaSelectionQueue(windowElement, state);
     }
 }
 
-async function processMediaSelectionQueue(windowElement, state, { initial = false } = {}) {
+async function processMediaSelectionQueue(windowElement, state) {
     if (state.mediaTransitionInProgress) {
         return;
     }
@@ -993,38 +1106,18 @@ async function processMediaSelectionQueue(windowElement, state, { initial = fals
     windowElement.setAttribute("aria-busy", "true");
 
     try {
-        let firstSelection = initial;
-        while (windowElement.isConnected) {
-            const targetIndex = state.desiredMediaIndex;
+        while (windowElement.isConnected && state.mediaSelectionQueue.length) {
+            const selection = state.mediaSelectionQueue.shift();
+            const targetIndex = selection.index;
             const currentEntry = state.mediaElement ? state.mediaEntries.get(state.mediaIndex) : null;
             if (currentEntry?.element === state.mediaElement && state.mediaIndex === targetIndex) {
-                break;
-            }
-
-            let targetEntry;
-            try {
-                targetEntry = ensureMediaEntry(windowElement, state, targetIndex);
-                await targetEntry.readyPromise;
-            } catch (error) {
-                if (state.desiredMediaIndex === targetIndex) {
-                    state.desiredMediaIndex = state.mediaElement ? state.mediaIndex : 0;
-                    showError(state.viewportHost, state, "media unavailable");
-                }
-                if (!state.mediaElement || state.desiredMediaIndex === targetIndex) {
-                    break;
-                }
                 continue;
             }
 
-            if (state.desiredMediaIndex !== targetIndex) {
-                continue;
-            }
-
-            await activateMediaEntry(windowElement, state, targetEntry, { initial: firstSelection });
-            firstSelection = false;
-            if (state.desiredMediaIndex === state.mediaIndex) {
-                break;
-            }
+            const targetEntry = ensureMediaEntry(windowElement, state, targetIndex);
+            await targetEntry.readyPromise;
+            await activateMediaEntry(windowElement, state, targetEntry, { initial: selection.initial });
+            state.desiredMediaIndex = state.mediaSelectionQueue.at(-1)?.index ?? state.mediaIndex;
         }
     } finally {
         state.mediaTransitionInProgress = false;
@@ -1044,19 +1137,17 @@ function ensureMediaEntry(windowElement, state, mediaIndex) {
     }
 
     let resolveReady;
-    let rejectReady;
     const entry = {
         index: mediaIndex,
         item: mediaItem,
         element: null,
         ready: false,
         failed: false,
-        readyPromise: new Promise((resolve, reject) => {
+        readyPromise: new Promise((resolve) => {
             resolveReady = resolve;
-            rejectReady = reject;
         }),
         resolveReady,
-        rejectReady
+        readyTimeoutId: null
     };
 
     const mediaElement =
@@ -1073,6 +1164,9 @@ function ensureMediaEntry(windowElement, state, mediaIndex) {
     mediaElement.inert = true;
     state.viewport.appendChild(mediaElement);
     state.mediaEntries.set(mediaIndex, entry);
+    entry.readyTimeoutId = window.setTimeout(() => {
+        markMediaEntryFailed(state, entry);
+    }, MEDIA_READY_TIMEOUT);
     return entry;
 }
 
@@ -1083,6 +1177,10 @@ function markMediaEntryReady(state, entry, width = 0, height = 0) {
     if (width > 0 && height > 0) {
         recordMediaDimensions(state, entry.item, width, height);
     }
+    if (entry.readyTimeoutId !== null) {
+        clearTimeout(entry.readyTimeoutId);
+        entry.readyTimeoutId = null;
+    }
     entry.ready = true;
     entry.resolveReady(entry);
     markPreviewLive(state.previewElement);
@@ -1092,10 +1190,30 @@ function markMediaEntryFailed(state, entry) {
     if (!entry || entry.ready || entry.failed) {
         return;
     }
+    if (entry.readyTimeoutId !== null) {
+        clearTimeout(entry.readyTimeoutId);
+        entry.readyTimeoutId = null;
+    }
     entry.failed = true;
-    entry.rejectReady(new Error("media unavailable"));
-    teardownMediaEntry(entry);
-    state.mediaEntries.delete(entry.index);
+    const failedElement = entry.element;
+    const fallback = document.createElement("div");
+    fallback.className = "art-window__media art-window__media--unavailable is-media-cached is-media-hidden";
+    fallback.dataset.mediaIndex = entry.index.toString();
+    fallback.setAttribute("role", "img");
+    fallback.setAttribute("aria-label", `${entry.item.title || entry.item.alt || "media"} unavailable`);
+    fallback.setAttribute("aria-hidden", "true");
+    fallback.inert = true;
+    fallback.textContent = "media unavailable";
+
+    pauseMediaEntry(entry);
+    failedElement?.replaceWith(fallback);
+    if (failedElement?.tagName === "VIDEO") {
+        failedElement.removeAttribute("src");
+        failedElement.load?.();
+    }
+    entry.element = fallback;
+    entry.ready = true;
+    entry.resolveReady(entry);
 }
 
 async function activateMediaEntry(windowElement, state, targetEntry, { initial = false } = {}) {
@@ -1132,6 +1250,7 @@ async function activateMediaEntry(windowElement, state, targetEntry, { initial =
     attachMediaWarning(state, targetEntry.item);
     applyMediaSelectionPlacement(windowElement, state);
     resumeMediaEntry(state, targetEntry);
+    preloadAdjacentMediaEntries(windowElement, state);
 
     const duration = hasPrevious && !initial ? Math.max(MEDIA_GEOMETRY_DURATION, MEDIA_FADE_DURATION) : 0;
     await waitForMotion(duration);
@@ -1141,6 +1260,22 @@ async function activateMediaEntry(windowElement, state, targetEntry, { initial =
         previousEntry.element.classList.add("is-media-hidden");
     }
     windowElement.classList.remove("is-media-transitioning");
+}
+
+function preloadAdjacentMediaEntries(windowElement, state) {
+    const total = state?.config?.mediaItems?.length ?? 0;
+    if (total < 2 || !windowElement?.isConnected) {
+        return;
+    }
+
+    [-1, 1].forEach((direction) => {
+        const mediaIndex = (state.mediaIndex + direction + total) % total;
+        try {
+            ensureMediaEntry(windowElement, state, mediaIndex);
+        } catch (error) {
+            /* invalid media entries are surfaced when selected */
+        }
+    });
 }
 
 function createMediaVideoElement(windowElement, state, mediaItem, entry) {
@@ -1262,6 +1397,10 @@ function teardownMediaEntry(entry) {
     if (!mediaElement) {
         return;
     }
+    if (entry.readyTimeoutId !== null) {
+        clearTimeout(entry.readyTimeoutId);
+        entry.readyTimeoutId = null;
+    }
     pauseMediaEntry(entry);
     if (mediaElement.tagName === "VIDEO") {
         mediaElement.removeAttribute("src");
@@ -1281,6 +1420,7 @@ function teardownMediaElement(state) {
     if (state) {
         state.mediaElement = null;
         state.mediaTransitionInProgress = false;
+        state.mediaSelectionQueue.length = 0;
         state.desiredMediaIndex = state.mediaIndex;
     }
 }
@@ -1371,8 +1511,11 @@ function syncSelectedMediaMetadata(windowElement, state) {
 
     const mediaItem = getSelectedMediaItem(state);
     const metadata = getMediaMetadata(state.config, mediaItem);
+    const itemPosition = state.mediaIndex + 1;
+    const itemTotal = state.config.mediaItems.length;
     const titleElement = state.mediaTitleElement || windowElement.querySelector(".art-window__media-title");
     const tagsElement = state.mediaTagsElement || windowElement.querySelector(".art-window__media-heading .art-window__tags");
+    const statusElement = state.mediaStatusElement || windowElement.querySelector(".art-window__media-status");
 
     if (titleElement) {
         titleElement.textContent = metadata.title;
@@ -1381,6 +1524,10 @@ function syncSelectedMediaMetadata(windowElement, state) {
     if (tagsElement) {
         updateTagList(tagsElement, metadata.tags);
         state.mediaTagsElement = tagsElement;
+    }
+    if (statusElement) {
+        statusElement.textContent = `${metadata.title}, ${itemPosition} of ${itemTotal}`;
+        state.mediaStatusElement = statusElement;
     }
 
     state.descriptionController?.update(metadata.description, metadata.title);
@@ -1395,7 +1542,7 @@ function syncSelectedMediaMetadata(windowElement, state) {
         windowElement.querySelectorAll(selector).forEach((button) => {
             button.setAttribute(
                 "aria-label",
-                `${direction} media in ${state.config.title}; current item ${metadata.title}`
+                `${direction} media in ${state.config.title}; current item ${metadata.title}, ${itemPosition} of ${itemTotal}`
             );
         });
     });
@@ -1408,7 +1555,7 @@ function cycleWindowMedia(windowElement, configId, direction) {
     }
 
     const total = state.config.mediaItems.length;
-    const queuedIndex = Number.isInteger(state.desiredMediaIndex) ? state.desiredMediaIndex : state.mediaIndex;
+    const queuedIndex = state.mediaSelectionQueue.at(-1)?.index ?? state.mediaIndex;
     requestMediaSelection(windowElement, state, (queuedIndex + direction + total) % total);
 }
 
@@ -1420,15 +1567,60 @@ function enableMediaSwipe(viewport, windowElement, configId) {
     let pointerId = null;
     let startX = 0;
     let startY = 0;
-    const minimumSwipeDistance = 40;
+    let lastX = 0;
+    let lastY = 0;
+    let startTime = 0;
+    let lockedAxis = null;
+
+    const markGestureUsed = () => {
+        windowElement.dataset.gestureWasActive = "1";
+        window.setTimeout(() => {
+            delete windowElement.dataset.gestureWasActive;
+        }, 0);
+    };
+
+    const resetGesture = () => {
+        pointerId = null;
+        lockedAxis = null;
+    };
 
     viewport.addEventListener("pointerdown", (event) => {
-        if (event.pointerType !== "touch" || event.isPrimary === false) {
+        if (
+            (event.pointerType !== "touch" && event.pointerType !== "pen") ||
+            event.isPrimary === false ||
+            event.target.closest("button, a, input, select, textarea")
+        ) {
             return;
         }
         pointerId = event.pointerId;
         startX = event.clientX;
         startY = event.clientY;
+        lastX = startX;
+        lastY = startY;
+        startTime = performance.now();
+        lockedAxis = null;
+        viewport.setPointerCapture?.(pointerId);
+    });
+
+    viewport.addEventListener("pointermove", (event) => {
+        if (pointerId !== event.pointerId) {
+            return;
+        }
+
+        lastX = event.clientX;
+        lastY = event.clientY;
+        const gesture = classifySwipeGesture({
+            deltaX: lastX - startX,
+            deltaY: lastY - startY,
+            elapsedMs: performance.now() - startTime
+        });
+        lockedAxis ||= gesture.axis;
+        if (lockedAxis) {
+            markGestureUsed();
+        }
+        if (lockedAxis === "horizontal") {
+            event.preventDefault();
+        }
     });
 
     const completeSwipe = (event) => {
@@ -1436,24 +1628,33 @@ function enableMediaSwipe(viewport, windowElement, configId) {
             return;
         }
 
-        pointerId = null;
-        if (!window.matchMedia("(max-width: 640px)").matches) {
-            return;
+        lastX = event.clientX ?? lastX;
+        lastY = event.clientY ?? lastY;
+        const gesture = classifySwipeGesture({
+            deltaX: lastX - startX,
+            deltaY: lastY - startY,
+            elapsedMs: performance.now() - startTime
+        });
+        if (viewport.hasPointerCapture?.(pointerId)) {
+            viewport.releasePointerCapture(pointerId);
         }
+        resetGesture();
 
-        const deltaX = event.clientX - startX;
-        const deltaY = event.clientY - startY;
-        if (Math.abs(deltaX) < minimumSwipeDistance || Math.abs(deltaX) <= Math.abs(deltaY)) {
+        if (!gesture.accepted || gesture.axis !== "horizontal") {
             return;
         }
 
         event.preventDefault();
-        cycleWindowMedia(windowElement, configId, deltaX < 0 ? 1 : -1);
+        markGestureUsed();
+        cycleWindowMedia(windowElement, configId, gesture.direction);
     };
 
     viewport.addEventListener("pointerup", completeSwipe);
-    viewport.addEventListener("pointercancel", () => {
-        pointerId = null;
+    viewport.addEventListener("pointercancel", completeSwipe);
+    viewport.addEventListener("lostpointercapture", (event) => {
+        if (pointerId === event.pointerId) {
+            resetGesture();
+        }
     });
 }
 
@@ -1793,6 +1994,7 @@ function ensureFloatingAnimation() {
             }
 
             const shouldPause =
+                compactLayoutActive === true ||
                 windowElement.classList.contains("is-active") ||
                 windowElement.dataset.dragging === "1" ||
                 windowElement.dataset.resizing === "1";
@@ -1832,11 +2034,13 @@ function ensureWindowState(configId) {
             mediaWarningElement: null,
             mediaIndex: 0,
             desiredMediaIndex: 0,
+            mediaSelectionQueue: [],
             mediaEntries: new Map(),
             mediaTransitionInProgress: false,
             mediaDimensions: new Map(),
             mediaTitleElement: null,
             mediaTagsElement: null,
+            mediaStatusElement: null,
             descriptionController: null,
             previewReferenceWidth: Number(config.initialSize?.width) || WINDOW_DEFAULT_WIDTH,
             previewReferenceViewportHeight:
@@ -1861,7 +2065,9 @@ function ensureWindowState(configId) {
             sceneIdleTimeoutId: null,
             sceneActivityCleanup: null,
             windowElement: null,
-            footerElement: null
+            footerElement: null,
+            fullscreenButton: null,
+            embedActivator: null
         };
 
         windowStates.set(configId, state);
@@ -2072,6 +2278,8 @@ function openWindow(windowElement, configId) {
 
     storeWindowOrigin(windowElement);
     windowElement.classList.add("is-active");
+    state.fullscreenButton?.setAttribute("aria-pressed", "true");
+    syncEmbedInteractivity(windowElement, state);
     syncBodyActiveState();
     applyExpandedPlacement(windowElement, config);
 
@@ -2186,6 +2394,7 @@ function mountEmbed(state) {
     if (!state.iframe.isConnected) {
         (state.viewport || viewport).appendChild(state.iframe);
     }
+    syncEmbedInteractivity(state.windowElement, state);
 
     if (state.embedTimeoutId === null) {
         state.embedTimeoutId = window.setTimeout(() => {
@@ -2201,6 +2410,31 @@ function mountEmbed(state) {
     state.mounted = true;
 }
 
+function syncEmbedInteractivity(windowElement, state) {
+    if (!windowElement || !state || state.config.type !== "embed" || hasMediaItems(state.config)) {
+        return;
+    }
+
+    const isActive = windowElement.classList.contains("is-active");
+    if (state.iframe) {
+        state.iframe.inert = !isActive;
+        state.iframe.classList.toggle("is-embed-interactive", isActive);
+        if (isActive) {
+            state.iframe.removeAttribute("aria-hidden");
+            state.iframe.removeAttribute("tabindex");
+        } else {
+            state.iframe.setAttribute("aria-hidden", "true");
+            state.iframe.tabIndex = -1;
+        }
+    }
+
+    if (state.embedActivator) {
+        state.embedActivator.hidden = isActive;
+        state.embedActivator.setAttribute("aria-hidden", isActive ? "true" : "false");
+        state.embedActivator.tabIndex = isActive ? -1 : 0;
+    }
+}
+
 function closeWindow(windowElement, configId) {
     if (!windowElement.classList.contains("is-active")) {
         return;
@@ -2212,7 +2446,10 @@ function closeWindow(windowElement, configId) {
     }
 
     windowElement.classList.remove("is-active");
+    windowElement.classList.remove("is-sideways");
+    state?.fullscreenButton?.setAttribute("aria-pressed", "false");
     restoreWindowOrigin(windowElement);
+    syncEmbedInteractivity(windowElement, state);
 
     if (state && hasMediaItems(state.config)) {
         applyMediaSelectionPlacement(windowElement, state);
@@ -2292,6 +2529,14 @@ function restoreWindowOrigin(windowElement) {
 }
 
 function applyExpandedPlacement(windowElement, config) {
+    if (isCompactWindowLayout()) {
+        const state = windowStates.get(config.uid) || null;
+        const aspectRatio = state && hasMediaItems(config) ? getSelectedMediaAspectRatio(state) : 1;
+        applyCompactExpandedPlacement(windowElement, state, aspectRatio);
+        return;
+    }
+
+    windowElement.classList.remove("is-sideways");
     if (hasMediaItems(config)) {
         applyMediaSelectionPlacement(windowElement, ensureWindowState(config.uid));
         return;
@@ -2324,11 +2569,50 @@ function applyMediaSelectionPlacement(windowElement, state) {
 
     const aspectRatio = getSelectedMediaAspectRatio(state);
     if (windowElement.classList.contains("is-active")) {
+        if (isCompactWindowLayout()) {
+            applyCompactExpandedPlacement(windowElement, state, aspectRatio);
+            return;
+        }
         applyMediaAspectFitPlacement(windowElement, state, aspectRatio);
         return;
     }
 
+    windowElement.classList.remove("is-sideways");
+    if (isCompactWindowLayout()) {
+        return;
+    }
+
     applyPreviewMediaPlacement(windowElement, state, aspectRatio);
+}
+
+function applyCompactExpandedPlacement(windowElement, state, aspectRatio = 1) {
+    const gutter = 12;
+    const bottomClearance = getAudioPlayerClearance(false);
+    const usableHeight = Math.max(window.innerHeight - bottomClearance, WINDOW_MIN_HEIGHT + gutter * 2);
+    const sideways = shouldUseSidewaysWindow({
+        compact: true,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+        aspectRatio
+    });
+
+    windowElement.classList.toggle("is-sideways", sideways);
+
+    const width = Math.max((sideways ? usableHeight : window.innerWidth) - gutter * 2, WINDOW_MIN_WIDTH);
+    const height = Math.max((sideways ? window.innerWidth : usableHeight) - gutter * 2, WINDOW_MIN_HEIGHT);
+    const left = sideways ? (window.innerWidth - width) / 2 : gutter;
+    const top = sideways ? (usableHeight - height) / 2 : gutter;
+
+    windowElement.style.left = `${Math.round(left)}px`;
+    windowElement.style.top = `${Math.round(top)}px`;
+    windowElement.style.width = `${Math.round(width)}px`;
+    windowElement.style.height = `${Math.round(height)}px`;
+    windowElement.dataset.expandedWidth = Math.round(width).toString();
+    windowElement.dataset.expandedHeight = Math.round(height).toString();
+
+    if (state?.config.type === "scene") {
+        notifySceneResize(windowElement);
+    }
 }
 
 function getSelectedMediaAspectRatio(state) {
@@ -2470,6 +2754,8 @@ function resizeScene(state) {
 }
 
 function handleResize() {
+    const compact = syncWindowLayoutMode();
+    syncBodyActiveState();
     document.querySelectorAll(".art-window").forEach((windowElement) => {
         if (windowElement.classList.contains("is-active")) {
             const configId = windowElement.dataset.windowId;
@@ -2477,6 +2763,11 @@ function handleResize() {
             if (config) {
                 applyExpandedPlacement(windowElement, config);
             }
+            return;
+        }
+
+        if (compact) {
+            windowElement.classList.remove("is-sideways");
             return;
         }
 
@@ -2538,6 +2829,18 @@ function syncBodyActiveState() {
         "work-window-active",
         document.documentElement.dataset.page === "work" && hasActive?.dataset.windowLayer === "work"
     );
+
+    if (hasActive && lockedPageScrollY === null && isCompactWindowLayout()) {
+        lockedPageScrollY = window.scrollY;
+        document.body.classList.add("is-window-scroll-locked");
+    } else if (!hasActive && lockedPageScrollY !== null) {
+        const restoreY = lockedPageScrollY;
+        lockedPageScrollY = null;
+        document.body.classList.remove("is-window-scroll-locked");
+        requestAnimationFrame(() => {
+            window.scrollTo({ top: restoreY, left: 0, behavior: "auto" });
+        });
+    }
 }
 
 function enableDragging(windowElement, handle) {
@@ -2547,7 +2850,10 @@ function enableDragging(windowElement, handle) {
     let hasMoved = false;
 
     handle.addEventListener("pointerdown", (event) => {
-        if (windowElement.classList.contains("is-active")) {
+        if (
+            windowElement.classList.contains("is-active") ||
+            (isCompactWindowLayout() && (event.pointerType === "touch" || event.pointerType === "pen"))
+        ) {
             return;
         }
 
@@ -2669,7 +2975,10 @@ function enableResizing(windowElement, handle) {
     let startY = 0;
 
     handle.addEventListener("pointerdown", (event) => {
-        if (pointerId !== null) {
+        if (
+            pointerId !== null ||
+            (isCompactWindowLayout() && (event.pointerType === "touch" || event.pointerType === "pen"))
+        ) {
             return;
         }
 

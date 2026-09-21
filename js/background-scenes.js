@@ -1,5 +1,10 @@
+import { isCompactWindowLayout } from "./window-interactions.js";
+
 const THEME_LIGHT = "light";
 const THEME_DARK = "dark";
+
+syncCompactRootClass();
+window.addEventListener("resize", syncCompactRootClass);
 
 const stack = document.querySelector("[data-canvas-stack]");
 if (!stack) {
@@ -15,6 +20,10 @@ function exportEvent(canvas) {
     );
 }
 
+function syncCompactRootClass() {
+    document.documentElement.classList.toggle("is-compact-window-layout", isCompactWindowLayout());
+}
+
 function initialize() {
     const canvases = new Map();
     stack.querySelectorAll("[data-background-canvas]").forEach((canvas) => {
@@ -26,6 +35,10 @@ function initialize() {
         canvas.addEventListener(
             "touchmove",
             (event) => {
+                const pageId = document.documentElement.dataset.page;
+                if (isCompactWindowLayout() && ["art", "work", "music"].includes(pageId)) {
+                    return;
+                }
                 event.preventDefault();
             },
             { passive: false }
