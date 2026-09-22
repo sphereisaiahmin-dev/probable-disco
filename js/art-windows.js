@@ -2586,22 +2586,23 @@ function applyMediaSelectionPlacement(windowElement, state) {
 }
 
 function applyCompactExpandedPlacement(windowElement, state, aspectRatio = 1) {
-    const gutter = 12;
-    const bottomClearance = getAudioPlayerClearance(false);
-    const usableHeight = Math.max(window.innerHeight - bottomClearance, WINDOW_MIN_HEIGHT + gutter * 2);
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
     const sideways = shouldUseSidewaysWindow({
         compact: true,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
+        viewportWidth,
+        viewportHeight,
         aspectRatio
     });
 
     windowElement.classList.toggle("is-sideways", sideways);
 
-    const width = Math.max((sideways ? usableHeight : window.innerWidth) - gutter * 2, WINDOW_MIN_WIDTH);
-    const height = Math.max((sideways ? window.innerWidth : usableHeight) - gutter * 2, WINDOW_MIN_HEIGHT);
-    const left = sideways ? (window.innerWidth - width) / 2 : gutter;
-    const top = sideways ? (usableHeight - height) / 2 : gutter;
+    // A rotated shell swaps its visual width and height, so size the unrotated
+    // element to the inverse viewport dimensions and keep its centre fixed.
+    const width = sideways ? viewportHeight : viewportWidth;
+    const height = sideways ? viewportWidth : viewportHeight;
+    const left = (viewportWidth - width) / 2;
+    const top = (viewportHeight - height) / 2;
 
     windowElement.style.left = `${Math.round(left)}px`;
     windowElement.style.top = `${Math.round(top)}px`;

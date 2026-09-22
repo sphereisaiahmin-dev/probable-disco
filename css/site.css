@@ -1880,6 +1880,12 @@ html.is-compact-window-layout body.is-window-scroll-locked {
     overflow: hidden !important;
 }
 
+html.is-compact-window-layout body.art-window-active .audio-player {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
 html.is-compact-window-layout [data-background-canvas] {
     touch-action: pan-y;
 }
@@ -1935,6 +1941,18 @@ html.is-compact-window-layout .art-window.is-active {
     transform-origin: center;
     transition: opacity 0.25s ease, transform 0.32s ease, border-color 0.25s ease,
         background-color 0.25s ease;
+}
+
+html.is-compact-window-layout .art-window.is-active:not(.is-sideways) .art-window__header {
+    padding-top: max(0.6rem, env(safe-area-inset-top));
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+
+html.is-compact-window-layout .art-window.is-active:not(.is-sideways) .art-window__footer {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
 }
 
 html.is-compact-window-layout .art-window.is-active.is-sideways {

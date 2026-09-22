@@ -181,7 +181,7 @@ test("collapsed embeds open before becoming interactive", async ({ page }) => {
     await expect(iframe).not.toHaveAttribute("aria-hidden", "true");
 });
 
-test("expanded landscape media rotates as a whole only in portrait", async ({ page }) => {
+test("expanded media fills the mobile viewport, hides audio, and rotates only in portrait", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/work");
     await waitForWindows(page);
@@ -193,6 +193,20 @@ test("expanded landscape media rotates as a whole only in portrait", async ({ pa
     await marketing.locator(".art-window__control--fullscreen").click();
     await expect(marketing).toHaveClass(/is-active/);
     await expect(marketing).not.toHaveClass(/is-sideways/);
+    await expect(page.locator(".audio-player")).toBeHidden();
+    await expect
+        .poll(async () => {
+            const rect = await marketing.boundingBox();
+            return rect
+                ? {
+                      left: Math.round(rect.x),
+                      top: Math.round(rect.y),
+                      right: Math.round(rect.x + rect.width),
+                      bottom: Math.round(rect.y + rect.height)
+                  }
+                : null;
+        })
+        .toEqual({ left: 0, top: 0, right: 390, bottom: 844 });
 
     await next.click();
     await expect(marketing.locator(".art-window__media-title")).toHaveText("whocares");
@@ -200,15 +214,36 @@ test("expanded landscape media rotates as a whole only in portrait", async ({ pa
     await expect
         .poll(async () => {
             const rect = await marketing.boundingBox();
-            return rect ? { left: Math.round(rect.x), right: Math.round(rect.x + rect.width) } : null;
+            return rect
+                ? {
+                      left: Math.round(rect.x),
+                      top: Math.round(rect.y),
+                      right: Math.round(rect.x + rect.width),
+                      bottom: Math.round(rect.y + rect.height)
+                  }
+                : null;
         })
-        .toEqual({ left: 12, right: 378 });
+        .toEqual({ left: 0, top: 0, right: 390, bottom: 844 });
 
     await page.setViewportSize({ width: 844, height: 390 });
     await expect(marketing).not.toHaveClass(/is-sideways/);
-    const landscapeRect = await marketing.boundingBox();
-    expect(landscapeRect.x).toBeGreaterThanOrEqual(0);
-    expect(landscapeRect.x + landscapeRect.width).toBeLessThanOrEqual(845);
+    await expect
+        .poll(async () => {
+            const rect = await marketing.boundingBox();
+            return rect
+                ? {
+                      left: Math.round(rect.x),
+                      top: Math.round(rect.y),
+                      right: Math.round(rect.x + rect.width),
+                      bottom: Math.round(rect.y + rect.height)
+                  }
+                : null;
+        })
+        .toEqual({ left: 0, top: 0, right: 844, bottom: 390 });
+
+    await page.keyboard.press("Escape");
+    await expect(marketing).not.toHaveClass(/is-active/);
+    await expect(page.locator(".audio-player")).toBeVisible();
 });
 
 test("desktop to phone resize clears floating overflow and keeps touch controls reachable", async ({ browser }) => {
