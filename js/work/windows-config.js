@@ -83,21 +83,24 @@ export const workWindowConfig = [
                 src: "https://stjaudio.b-cdn.net/video/minimarquenort.mp4",
                 title: "crsvr",
                 tags: ["video", "installation"],
-                description: "documentation of the crsvr installation captured for quick preview"
+                description: "documentation of the crsvr installation captured for quick preview",
+                aspectRatio: "16/9"
             },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/bibiportfolio.mov",
                 title: "bibistar",
                 tags: ["marketing", "video creation"],
-                description: "bibistar marketing video portfolio piece"
+                description: "bibistar marketing video portfolio piece",
+                aspectRatio: "9/16"
             },
             {
                 type: "video",
                 src: "https://stjaudio.b-cdn.net/video/whocaresbrandadfinal4.3.mov",
                 title: "whocares",
                 tags: ["marketing", "video creation"],
-                description: "whocares marketing video portfolio piece"
+                description: "whocares marketing video portfolio piece",
+                aspectRatio: "4/3"
             }
         ],
         initialPosition: { x: 360, y: 260 },
