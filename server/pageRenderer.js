@@ -122,6 +122,7 @@ function renderFullDocument(pagePayload) {
         pageId: escapeHtml(pagePayload.id),
         route: escapeHtml(pagePayload.route),
         cssSite: buildAssetUrl('/css/site.css'),
+        jsAudioAnalysis: buildAssetUrl('/js/audio-analysis-core.js'),
         jsAudioPlayer: buildAssetUrl('/js/audio-player.js'),
         jsPatch: buildAssetUrl('/js/patch.js'),
         lightOps: buildAssetUrl('/lightmode/js/ops.js'),

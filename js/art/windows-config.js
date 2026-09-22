@@ -2,8 +2,20 @@ import { getSceneMetadata } from "./scene-registry.js";
 
 const asciiScene = getSceneMetadata("ascii");
 const impressionsScene = getSceneMetadata("webcam-impressions");
+const mothScene = getSceneMetadata("moth");
 
 export const artWindowConfig = [
+    {
+        id: "moth",
+        title: "moth",
+        tags: mothScene.tags,
+        description: mothScene.description,
+        sceneId: "moth",
+        initialPosition: { x: 120, y: 96 },
+        initialSize: { width: 560, height: 560 },
+        previewGradient: "radial-gradient(circle, rgba(255,129,50,0.28), rgba(5,5,5,0.96) 62%)",
+        useCanvas: true
+    },
     {
         id: "ascii",
         title: "ASCII",

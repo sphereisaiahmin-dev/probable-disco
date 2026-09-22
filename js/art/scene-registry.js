@@ -1,6 +1,7 @@
 import { createAsciiScene } from "./scenes/asciiScene.js";
 import { createTestArtScene } from "./scenes/testArtScene.js";
 import { createWebcamImpressionsScene } from "./scenes/webcamImpressionsScene.js";
+import { createOscilloscopeScene } from "./scenes/oscilloscopeScene.js";
 
 const registry = {
     ascii: {
@@ -17,6 +18,11 @@ const registry = {
         factory: createWebcamImpressionsScene,
         tags: ["webcam", "instance", "3d"],
         description: "impressionistic 3d capture of the webcam feed to explore motion and depth"
+    },
+    moth: {
+        factory: createOscilloscopeScene,
+        tags: ["audioreactive", "wireframe"],
+        description: "audioreactive mirrored wireframe feedback translated from a touchdesigner scene"
     }
 };
 

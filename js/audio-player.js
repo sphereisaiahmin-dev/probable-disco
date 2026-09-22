@@ -504,12 +504,217 @@
         let toneAnalyser = null;
         let isToneGraphReady = false;
         let dataArray = null;
+        const ANALYSIS_FFT_SIZE = 4096;
+        const analysisCore = window.SaintJustusAudioAnalysis;
+        const analysisListeners = new Set();
+        const lowEnvelopeFollower = analysisCore?.createEnvelopeFollower({
+            windowSeconds: 1,
+            smoothingSeconds: 0.1
+        });
+        const highEnvelopeFollower = analysisCore?.createEnvelopeFollower({
+            windowSeconds: 1,
+            smoothingSeconds: 0.5
+        });
+        let analysisInput = null;
+        let analysisWaveform = null;
+        let analysisSpectrum = null;
+        let analysisLowPass = null;
+        let analysisLowBand = null;
+        let analysisHighPass = null;
+        let analysisHighBand = null;
+        let analysisSilentGain = null;
+        let analysisConnectedSource = null;
+        let analysisFrame = 0;
+        let analysisAvailable = false;
+        let analysisUnavailableReason = "audio graph not started";
+        let analysisWarningLogged = false;
+        let analysisWaveformScratch = new Float32Array(ANALYSIS_FFT_SIZE);
+        let analysisSpectrumScratch = new Float32Array(ANALYSIS_FFT_SIZE / 2);
+        let analysisLowScratch = new Float32Array(ANALYSIS_FFT_SIZE);
+        let analysisHighScratch = new Float32Array(ANALYSIS_FFT_SIZE);
+        const analysisSnapshot = {
+            available: false,
+            playing: false,
+            contextState: "unavailable",
+            currentTime: 0,
+            frame: 0,
+            lowEnvelope: 0,
+            highEnvelope: 0,
+            reason: "audio graph not started"
+        };
         let animationFrameId = null;
         let isVisualizerRunning = false;
         let pendingSeekTime = null;
         let resumeAfterMetadata = false;
         let isSeeking = false;
         const toneLibrary = window.Tone || null;
+
+        function emitAnalysisEvent(type, detail = {}) {
+            const event = { type, ...detail };
+            analysisListeners.forEach((listener) => {
+                try {
+                    listener(event);
+                } catch (error) {
+                    console.error("audio analysis: listener failed", error);
+                }
+            });
+        }
+
+        function copyAnalysisData(target, source, fillValue = 0) {
+            if (!target || typeof target.set !== "function") {
+                return;
+            }
+            for (let index = 0; index < target.length; index += 1) {
+                target[index] = index < source.length ? source[index] : fillValue;
+            }
+        }
+
+        function connectAnalysisSource(source) {
+            if (!source || !analysisInput || analysisConnectedSource === source) {
+                return;
+            }
+
+            try {
+                source.connect(analysisInput);
+                analysisConnectedSource = source;
+            } catch (primaryError) {
+                try {
+                    source.output.connect(analysisInput);
+                    analysisConnectedSource = source;
+                } catch (fallbackError) {
+                    analysisAvailable = false;
+                    analysisUnavailableReason = "unable to connect media source";
+                    if (!analysisWarningLogged) {
+                        console.warn("audio analysis unavailable", fallbackError || primaryError);
+                        analysisWarningLogged = true;
+                    }
+                    emitAnalysisEvent("unavailable", { reason: analysisUnavailableReason });
+                }
+            }
+        }
+
+        function ensureAnalysisGraph(source) {
+            if (!audioContext || !analysisCore) {
+                analysisAvailable = false;
+                analysisUnavailableReason = analysisCore ? "audio context unavailable" : "analysis core unavailable";
+                return false;
+            }
+
+            if (!analysisInput) {
+                analysisInput = audioContext.createGain();
+
+                analysisWaveform = audioContext.createAnalyser();
+                analysisWaveform.fftSize = ANALYSIS_FFT_SIZE;
+                analysisWaveform.smoothingTimeConstant = 0;
+
+                analysisSpectrum = audioContext.createAnalyser();
+                analysisSpectrum.fftSize = ANALYSIS_FFT_SIZE;
+                analysisSpectrum.smoothingTimeConstant = 0;
+
+                analysisLowPass = audioContext.createBiquadFilter();
+                analysisLowPass.type = "lowpass";
+                analysisLowPass.frequency.value = 700;
+                analysisLowPass.Q.value = Math.SQRT1_2;
+
+                analysisLowBand = audioContext.createAnalyser();
+                analysisLowBand.fftSize = ANALYSIS_FFT_SIZE;
+                analysisLowBand.smoothingTimeConstant = 0;
+
+                analysisHighPass = audioContext.createBiquadFilter();
+                analysisHighPass.type = "highpass";
+                analysisHighPass.frequency.value = 2000;
+                analysisHighPass.Q.value = Math.SQRT1_2;
+
+                analysisHighBand = audioContext.createAnalyser();
+                analysisHighBand.fftSize = ANALYSIS_FFT_SIZE;
+                analysisHighBand.smoothingTimeConstant = 0;
+
+                analysisSilentGain = audioContext.createGain();
+                analysisSilentGain.gain.value = 0;
+
+                analysisInput.connect(analysisWaveform);
+                analysisInput.connect(analysisSpectrum);
+                analysisInput.connect(analysisLowPass);
+                analysisInput.connect(analysisHighPass);
+                analysisLowPass.connect(analysisLowBand);
+                analysisHighPass.connect(analysisHighBand);
+                analysisWaveform.connect(analysisSilentGain);
+                analysisSpectrum.connect(analysisSilentGain);
+                analysisLowBand.connect(analysisSilentGain);
+                analysisHighBand.connect(analysisSilentGain);
+                analysisSilentGain.connect(audioContext.destination);
+            }
+
+            connectAnalysisSource(source);
+            analysisAvailable = Boolean(analysisConnectedSource);
+            analysisUnavailableReason = analysisAvailable ? "" : analysisUnavailableReason;
+            if (analysisAvailable) {
+                emitAnalysisEvent("ready", { sampleRate: audioContext.sampleRate });
+            }
+            return analysisAvailable;
+        }
+
+        function resetAnalysisEnvelope() {
+            lowEnvelopeFollower?.reset();
+            highEnvelopeFollower?.reset();
+            analysisSnapshot.lowEnvelope = 0;
+            analysisSnapshot.highEnvelope = 0;
+        }
+
+        const analysisApi = {
+            fftSize: ANALYSIS_FFT_SIZE,
+            frequencyBinCount: ANALYSIS_FFT_SIZE / 2,
+            get sampleRate() {
+                return audioContext?.sampleRate || 0;
+            },
+            get available() {
+                return analysisAvailable;
+            },
+            read({ waveform, spectrum, lowBand, highBand } = {}) {
+                if (analysisAvailable && analysisWaveform) {
+                    analysisWaveform.getFloatTimeDomainData(analysisWaveformScratch);
+                    analysisSpectrum.getFloatFrequencyData(analysisSpectrumScratch);
+                    analysisLowBand.getFloatTimeDomainData(analysisLowScratch);
+                    analysisHighBand.getFloatTimeDomainData(analysisHighScratch);
+
+                    copyAnalysisData(waveform, analysisWaveformScratch);
+                    copyAnalysisData(spectrum, analysisSpectrumScratch, -Infinity);
+                    copyAnalysisData(lowBand, analysisLowScratch);
+                    copyAnalysisData(highBand, analysisHighScratch);
+
+                    const analysisTime = audioContext?.currentTime || performance.now() / 1000;
+                    const lowRms = analysisCore.computeRms(analysisLowScratch);
+                    const highRms = analysisCore.computeRms(analysisHighScratch);
+                    analysisSnapshot.lowEnvelope = analysisCore.mapLowEnvelope(
+                        lowEnvelopeFollower.update(audio.paused ? 0 : lowRms, analysisTime)
+                    );
+                    analysisSnapshot.highEnvelope = analysisCore.mapHighEnvelope(
+                        highEnvelopeFollower.update(audio.paused ? 0 : highRms, analysisTime)
+                    );
+                } else {
+                    waveform?.fill?.(0);
+                    spectrum?.fill?.(-Infinity);
+                    lowBand?.fill?.(0);
+                    highBand?.fill?.(0);
+                }
+
+                analysisFrame += 1;
+                analysisSnapshot.available = analysisAvailable;
+                analysisSnapshot.playing = !audio.paused && !audio.ended;
+                analysisSnapshot.contextState = audioContext?.state || "unavailable";
+                analysisSnapshot.currentTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+                analysisSnapshot.frame = analysisFrame;
+                analysisSnapshot.reason = analysisUnavailableReason;
+                return analysisSnapshot;
+            },
+            subscribe(listener) {
+                if (typeof listener !== "function") {
+                    return () => {};
+                }
+                analysisListeners.add(listener);
+                return () => analysisListeners.delete(listener);
+            }
+        };
 
         function formatTime(value) {
             if (!Number.isFinite(value) || value < 0) {
@@ -732,6 +937,8 @@
             }
 
             timeCurrent.textContent = formatTime(clampedTime);
+            resetAnalysisEnvelope();
+            emitAnalysisEvent("seek", { currentTime: clampedTime });
         }
 
         function ensureToneGraph() {
@@ -766,6 +973,7 @@
                 toneLowPass.connect(toneHighPass);
                 toneHighPass.connect(toneAnalyser);
                 toneHighPass.connect(toneLibrary.Destination);
+                ensureAnalysisGraph(toneSource);
 
                 applyFilterValue(filterSlider.value);
 
@@ -831,6 +1039,7 @@
             nativeLowPass.connect(nativeHighPass);
             nativeHighPass.connect(analyser);
             analyser.connect(audioContext.destination);
+            ensureAnalysisGraph(mediaSource);
 
             applyFilterValue(filterSlider.value);
 
@@ -928,6 +1137,11 @@
             ticker.textContent = displayTitle || track.title || track.id;
             metaId.textContent = track.id || displayTitle || "--";
             audio.src = track.cdnSrc || track.src;
+            resetAnalysisEnvelope();
+            emitAnalysisEvent("trackchange", {
+                trackId: track.id || "",
+                src: audio.src
+            });
             resetSeekState();
 
             if (resetTime) {
@@ -1121,10 +1335,20 @@
             queueStateSave();
         });
 
-        audio.addEventListener("play", updatePlayButton);
-        audio.addEventListener("pause", updatePlayButton);
+        audio.addEventListener("play", () => {
+            updatePlayButton();
+            emitAnalysisEvent("play", { currentTime: audio.currentTime });
+        });
+        audio.addEventListener("pause", () => {
+            updatePlayButton();
+            emitAnalysisEvent("pause", { currentTime: audio.currentTime });
+        });
+        audio.addEventListener("ratechange", () => {
+            emitAnalysisEvent("ratechange", { playbackRate: audio.playbackRate });
+        });
 
         audio.addEventListener("ended", () => {
+            emitAnalysisEvent("ended", { currentTime: audio.currentTime });
             selectNextRandomTrack(true);
         });
 
@@ -1155,7 +1379,23 @@
             resumeAfterMetadata = false;
         });
 
-        window.addEventListener("beforeunload", queueStateSave);
+        window.addEventListener("beforeunload", () => {
+            queueStateSave();
+            emitAnalysisEvent("destroy");
+            analysisListeners.clear();
+        });
+
+        window.__saintjustusAudioController = {
+            ready: true,
+            analysis: analysisApi,
+            hydrate(meta = {}) {
+                if (meta?.pageId) {
+                    footer.dataset.pageContext = meta.pageId;
+                }
+            }
+        };
+
+        window.__saintjustusAudioController.hydrate({ pageId: document.documentElement?.dataset?.page });
 
         tracks = await fetchTracks();
 
@@ -1187,15 +1427,5 @@
             updatePlayButton();
         }
 
-        window.__saintjustusAudioController = {
-            ready: true,
-            hydrate(meta = {}) {
-                if (meta?.pageId) {
-                    footer.dataset.pageContext = meta.pageId;
-                }
-            }
-        };
-
-        window.__saintjustusAudioController.hydrate({ pageId: document.documentElement?.dataset?.page });
     });
 })();
