@@ -115,6 +115,15 @@ function initShell(initialPage) {
     function unmountActivePage() {
         const currentEntry = pageCache.get(activePath);
         if (currentEntry?.node?.isConnected) {
+            document.dispatchEvent(
+                new CustomEvent('shell:before-unmount', {
+                    detail: {
+                        pageId: currentEntry.payload?.id ?? null,
+                        route: activePath,
+                        fragment: currentEntry.node
+                    }
+                })
+            );
             currentEntry.node.remove();
         }
     }

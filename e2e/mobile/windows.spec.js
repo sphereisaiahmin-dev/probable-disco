@@ -246,6 +246,37 @@ test("expanded media fills the mobile viewport, hides audio, and rotates only in
     await expect(page.locator(".audio-player")).toBeVisible();
 });
 
+test("browser Back closes a fullscreen cached window before the shell detaches it", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.locator('[data-nav-link="work"]').click();
+    await waitForWindows(page);
+
+    const designLive = page.locator('[data-window-id="work:blare-db"]');
+    await designLive.locator(".art-window__control--fullscreen").click();
+    await expect(designLive).toHaveClass(/is-active/);
+    await expect(page.locator("body")).toHaveClass(/work-window-active/);
+    await expect(page.locator("body")).toHaveClass(/is-window-scroll-locked/);
+
+    await page.goBack();
+    await expect(page.locator("html")).toHaveAttribute("data-page", "home");
+    await expect(page.locator("body")).not.toHaveClass(/art-window-active/);
+    await expect(page.locator("body")).not.toHaveClass(/work-window-active/);
+    await expect(page.locator("body")).not.toHaveClass(/is-window-scroll-locked/);
+
+    await page.locator('[data-nav-link="work"]').click();
+    await waitForWindows(page);
+    const restoredDesignLive = page.locator('[data-window-id="work:blare-db"]');
+    await expect(restoredDesignLive).not.toHaveClass(/is-active/);
+    await expect(restoredDesignLive).not.toHaveClass(/is-sideways/);
+    await expect(restoredDesignLive.locator(".art-window__control--fullscreen")).toHaveAttribute(
+        "aria-pressed",
+        "false"
+    );
+    await expect(page.locator("body")).not.toHaveClass(/art-window-active/);
+    await expect(page.locator("body")).not.toHaveClass(/work-window-active/);
+});
+
 test("desktop to phone resize clears floating overflow and keeps touch controls reachable", async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, hasTouch: true });
     const page = await context.newPage();

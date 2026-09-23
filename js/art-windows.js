@@ -88,11 +88,17 @@ document.addEventListener("shell:navigate-intent", (event) => {
     dismissLayer(currentPage);
 });
 
-// Restore geometry before the shell detaches and caches the outgoing page.
-window.addEventListener("popstate", closeActiveWindow);
+// Browser Back/Forward reaches the shell's popstate listener before this module's
+// listeners. Let the shell synchronously close the outgoing cached fragment while
+// it is still connected, before mountPage() detaches it from the document.
+document.addEventListener("shell:before-unmount", (event) => {
+    closeActiveWindow(event?.detail?.fragment);
+});
 
-function closeActiveWindow() {
-    const activeWindow = document.querySelector(".art-window.is-active");
+function closeActiveWindow(root = document) {
+    const activeWindow = root?.matches?.(".art-window.is-active")
+        ? root
+        : root?.querySelector?.(".art-window.is-active");
     if (activeWindow) {
         closeWindow(activeWindow, activeWindow.dataset.windowId);
     }
@@ -2282,6 +2288,7 @@ function openWindow(windowElement, configId) {
     syncEmbedInteractivity(windowElement, state);
     syncBodyActiveState();
     applyExpandedPlacement(windowElement, config);
+    requestAnimationFrame(() => resizeScene(state));
 
     mountWindowContent(windowElement, state);
 }

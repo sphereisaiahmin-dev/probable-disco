@@ -72,3 +72,12 @@ test('art route exposes per-page modules', async () => {
     assert.equal(response.body.page.modules.length, 1);
     assert.equal(response.body.page.modules[0], versionedAsset('/js/art-windows.js'));
 });
+
+test('full documents load audio analysis before the shared player', async () => {
+    const response = await request(app).get('/art').expect(200).expect('Content-Type', /html/);
+    const analysisAsset = versionedAsset('/js/audio-analysis-core.js');
+    const playerAsset = versionedAsset('/js/audio-player.js');
+    assert.ok(response.text.includes(analysisAsset));
+    assert.ok(response.text.includes(playerAsset));
+    assert.ok(response.text.indexOf(analysisAsset) < response.text.indexOf(playerAsset));
+});
